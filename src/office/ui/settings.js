@@ -113,6 +113,11 @@ export function setup() {
     const tg = e.target.closest('[data-tgl]'); if (tg) setToggle(tg.dataset.tgl, tg.getAttribute('aria-checked') !== 'true');
   });
   document.body.classList.toggle('is-stream', state.streamer);
+  // Streamer mode blurs commands, paths and conversations. On a phone, where nobody streams, a pill says so and turns it
+  // off (it is kept per device, so a phone can have it on while the Mac doesn't).
+  const pill = document.createElement('button'); pill.type = 'button'; pill.className = 'stream-pill'; pill.textContent = tr('settings.streamPill');
+  pill.addEventListener('click', () => { setStreamer(false); syncToggles(); toast(tr('settings.streamOff')); });
+  document.body.append(pill);
   // graphics: the picked button, and which level Auto is using now
   const syncQuality = () => {
     for (const b of document.querySelectorAll('[data-quality]')) b.setAttribute('aria-pressed', String(b.dataset.quality === quality.choice));

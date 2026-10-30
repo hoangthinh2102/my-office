@@ -341,6 +341,28 @@ function trackBackground(s, p) {
     for (const t of running) { const id = String(t.id).slice(0, 60); if (!s.bg.has(id)) s.bg.set(id, { id, desc: clip(redact(oneLine(t.description || t.command || t.type || tr('server.tool.background'))), 70), at: Date.now() }); }
   }
 }
+// A background task ends with a <task-notification> in the transcript (its <task-id> and a <status>): read the tail now
+// and then, so a character whose shell finished while nobody was talking to Claude stops "running it in the background".
+// One still listed after BG_MAX ran too long to count as work (a dev server left running, a notice that never came).
+const BG_MAX = 3 * 3600e3;
+async function pruneBackground(s) {
+  if (!s.bg?.size) return false;
+  const before = s.bg.size, now = Date.now();
+  for (const [id, b] of s.bg) if (now - b.at > BG_MAX) s.bg.delete(id);
+  const file = transcriptOf(s);
+  if (file && s.bg.size) {
+    let fh;
+    try {
+      fh = await fsp.open(file, 'r');
+      const { size } = await fh.stat(), len = Math.min(size, 1_000_000), buf = Buffer.alloc(len);
+      await fh.read(buf, 0, len, size - len);
+      const re = /<task-id>([^<]{1,80})<\/task-id>[\s\S]{0,600}?<status>([a-z_]{1,20})<\/status>/g, tail = buf.toString('utf8').replace(/\\n/g, '\n');
+      let m; while ((m = re.exec(tail))) if (m[2] !== 'running') s.bg.delete(m[1].slice(0, 60));
+    } catch { /* no transcript */ }
+    finally { await fh?.close(); }
+  }
+  return s.bg.size !== before;
+}
 // Claude's last words of a turn, when the Stop hook didn't carry them: the newest assistant text in the transcript tail.
 async function lastReplyOf(s) {
   const file = transcriptOf(s); if (!file) return '';
@@ -924,7 +946,9 @@ setInterval(() => {
   for (const [key, s] of sessions) {
     // Claude went quiet without a Stop event (e.g. interrupted): let the chibi rest. A long tool run (a build, a test
     // suite) is not quiet; a tool still open after 10 minutes probably lost its PostToolUse.
-    if (s.status === 'work' && !s.busy && (!s.inTool || now - s.lastEventAt > 600_000) && now - s.lastEventAt > 20_000) { s.status = 'rest'; broadcast({ k: 'sess', s: pub(s) }); }
+    // Claude's own session file saying idle wins over a tool call that never reported back (stopped with Esc mid-tool).
+    if (s.status === 'work' && !s.busy && (!s.inTool || s.fromFile || now - s.lastEventAt > 600_000) && now - s.lastEventAt > 20_000) { s.status = 'rest'; s.inTool = false; broadcast({ k: 'sess', s: pub(s) }); }
+    if (s.bg?.size && now - (s.bgAt || 0) > 10_000) { s.bgAt = now; pruneBackground(s).then((ch) => { if (ch) broadcast({ k: 'sess', s: pub(s) }); }); }
     // Sessions seen only through hooks (no session file) leave after 10 quiet minutes.
     if (!s.fromFile && now - s.lastEventAt > 600_000) dropSession(key, s);
     // A subagent that went quiet is finished: 90 s once its session rests, 5 min while the session still works.

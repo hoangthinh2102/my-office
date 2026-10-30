@@ -11,6 +11,7 @@ export default {
   inputPh: 'Giao việc, nhắc việc hoặc yêu cầu sửa… (⌘/Ctrl + Enter để gửi)',
   send: 'Gửi',
   stop: 'Dừng',
+  back: 'Về danh sách nhân viên',
   save: 'Lưu',
   failed: 'Không làm được, thử lại sau.',
   offline: 'Không kết nối được server của văn phòng.',

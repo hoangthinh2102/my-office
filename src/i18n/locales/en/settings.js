@@ -1,4 +1,6 @@
 export default {
+  streamPill: 'Content hidden (streamer mode) · Turn off',
+  streamOff: 'Streamer mode is off: everything shows in full.',
   language: 'Language',
   switchingLang: 'Switching language…',
   toPro: 'Building the company office…',

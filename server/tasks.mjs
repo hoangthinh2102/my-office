@@ -11,7 +11,7 @@ import path from 'node:path';
 const MAX_TEXT = 4000, MAX_IMAGES = 4, MAX_IMAGE = 3_500_000;
 
 /** claude() -> { file } | null; env() -> the environment to run with; onStart(task), onDone(task) for the office. */
-export function createTasks({ dataDir, claude, env, onStart, onDone, max = 3, perHour = 12 }) {
+export function createTasks({ dataDir, claude, env, onStart, onDone, max = 3, perHour = 12, graceMs = 5000, lingerMs = 60_000 }) {
   const running = new Map(), recent = [];   // id -> task; when the last ones started (the hourly cap)
   const imgDir = path.join(dataDir, 'task-images');
   const pub = (t) => ({ id: t.id, dir: t.dir, text: t.text.slice(0, 200), at: t.at, from: t.from || null, sid: t.sid || null });
@@ -48,6 +48,14 @@ export function createTasks({ dataDir, claude, env, onStart, onDone, max = 3, pe
     catch { return { ok: false, code: 'noClaude' }; }
     const t = { id, pid: proc.pid, proc, dir, text, at: now, from, sid: null, result: '', error: '', buf: '' };
     running.set(id, t); recent.push(now);
+    // Done once: when the process exits, or soon after its result if it lingers (an MCP server or a shell it started
+    // keeping it alive). A run that answered is finished for the office; what is left of it is stopped a minute later.
+    let ended = false, lingerT = 0;
+    const finish = () => {
+      if (ended) return; ended = true; clearTimeout(lingerT);
+      running.delete(id);
+      onDone?.(t);
+    };
     // its stream: the new session's id (init) and its last words (result)
     proc.stdout.on('data', (c) => {
       t.buf += String(c);
@@ -63,6 +71,8 @@ export function createTasks({ dataDir, claude, env, onStart, onDone, max = 3, pe
             const u = j.usage || {};
             t.usage = { in: (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0), cacheRead: u.cache_read_input_tokens || 0, out: u.output_tokens || 0,
               cost: typeof j.total_cost_usd === 'number' ? j.total_cost_usd : null, turns: j.num_turns || 0, ms: j.duration_ms || 0 };
+            clearTimeout(lingerT);
+            lingerT = setTimeout(() => { finish(); lingerT = setTimeout(() => kill(t), lingerMs); }, graceMs);
           }
         } catch { /* not a line of its stream */ }
       }
@@ -71,17 +81,21 @@ export function createTasks({ dataDir, claude, env, onStart, onDone, max = 3, pe
     proc.stderr.on('data', (c) => { t.error = String(c).trim().split('\n').pop().slice(0, 300); });
     proc.on('error', (e) => { t.error = String(e.message || e).slice(0, 300); });
     proc.on('exit', (code) => {
-      running.delete(id);
-      if (code && !t.error) t.error = `exit ${code}`;
-      onDone?.(t);
+      t.exited = true;
+      if (code && !t.error && !ended) t.error = `exit ${code}`;
+      finish(); clearTimeout(lingerT);
     });
     onStart?.(t);
     return { ok: true, task: pub(t) };
   }
   /** Stops a task (its whole process group: the commands it started too). */
+  function kill(t) {
+    if (t.exited) return;
+    try { if (process.platform === 'win32') t.proc.kill(); else process.kill(-t.pid, 'SIGTERM'); } catch { try { t.proc.kill(); } catch { /* gone */ } }
+  }
   function stop(id) {
     const t = running.get(id); if (!t) return false;
-    try { if (process.platform === 'win32') t.proc.kill(); else process.kill(-t.pid, 'SIGTERM'); } catch { try { t.proc.kill(); } catch { /* gone */ } }
+    kill(t);
     return true;
   }
   /** the run that became this session (its id), if one is running */

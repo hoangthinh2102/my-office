@@ -43,12 +43,23 @@ const isOpen = () => modal && !modal.hidden;
 
 /* ---------- open / close / tabs ---------- */
 export async function openDirector(which = tab) {
-  modal.hidden = false; $('btn-director')?.setAttribute('aria-pressed', 'true');
+  modal.hidden = false; $('btn-director')?.setAttribute('aria-pressed', 'true'); fitKeyboard();
   unread = 0; badge();
   showTab(which);
   await loadCompany();
 }
-function close() { modal.hidden = true; $('btn-director')?.setAttribute('aria-pressed', 'false'); }
+function close() { modal.hidden = true; $('btn-director')?.setAttribute('aria-pressed', 'false'); fitKeyboard(); }
+// on a phone the people list and a conversation take turns on the screen (director.css)
+function showConvo(on) { modal.querySelector('.dir-talk')?.classList.toggle('is-convo', on); }
+function back() { hiring = false; $('dir-hire').hidden = true; showConvo(false); }
+// a phone's keyboard covers the bottom of the screen: keep the window (and Send) in the part still showing
+function fitKeyboard() {
+  const card = modal?.querySelector('.dir-card'), vv = window.visualViewport;
+  if (!card) return;
+  if (!isOpen() || !vv || !document.documentElement.classList.contains('is-phone')) { modal.style.top = modal.style.height = ''; return; }
+  modal.style.top = `${vv.offsetTop}px`; modal.style.height = `${vv.height}px`;
+  if (document.activeElement === $('dir-text')) { const m = $('dir-msgs'); m.scrollTop = m.scrollHeight; }
+}
 function showTab(which) {
   tab = which;
   for (const b of modal.querySelectorAll('.dir-tab')) b.classList.toggle('is-sel', b.dataset.tab === which);
@@ -116,7 +127,7 @@ const personOf = (key) => co?.people?.find((p) => p.sid === key) || null;
 
 /* ---------- one conversation ---------- */
 async function select(key) {
-  sel = key; hiring = false; $('dir-hire').hidden = true;
+  sel = key; hiring = false; $('dir-hire').hidden = true; showConvo(true);
   for (const b of $('dir-plist').querySelectorAll('.dir-person')) b.classList.toggle('is-sel', b.dataset.key === key);
   thread = (co?.dms || []).find((d) => d.key === key) || null; history = [];
   renderThread();
@@ -143,13 +154,18 @@ function historyNode() {
   }
   return box;
 }
+function backBtn() {   // (only shown on a phone)
+  const b = el('button', 'dir-back'); b.type = 'button'; b.setAttribute('aria-label', T('back')); b.title = T('back');
+  const ic = icon('chevron'); ic.style.transform = 'scaleX(-1)'; b.append(ic);
+  b.addEventListener('click', back); return b;
+}
 function renderHead() {
   const head = $('dir-chead');
-  if (hiring) { head.replaceChildren(el('span', 'dir-cname', T('hire.title'))); return; }
+  if (hiring) { head.replaceChildren(backBtn(), el('span', 'dir-cname', T('hire.title'))); return; }
   if (!sel) { head.replaceChildren(); return; }
   const p = personOf(sel), name = p?.name || thread?.name || sel, dir = p?.dir || thread?.dir || '';
   const role = p?.role || thread?.role || null;
-  const kids = [el('span', 'dir-cname', name), el('span', 'dir-cdir', dir)];
+  const kids = [backBtn(), el('span', 'dir-cname', name), el('span', 'dir-cdir', dir)];
   if (co?.local && thread?.msgs?.length && co.terminal) {   // carry it on outside the office: Terminal, or copy the command
     const acts = el('div', 'dir-cacts');
     const term = el('button', 'btn', T('resume.open')); term.type = 'button'; term.title = T('resume.openTitle');
@@ -248,7 +264,7 @@ function startHire() {
   pick.replaceChildren(...ws, ...(co?.projects || []).map((p) => { const o = el('option', null, `${p.name} — ${p.dir}`); o.value = p.dir; return o; }));
   if (!pick.options.length) { const o = el('option', null, T('hire.noProjects')); o.value = ''; pick.append(o); }
   permSelect($('dir-hire-perm'), 'dev'); nextSelect($('dir-hire-next'));
-  $('dir-hire').hidden = false;
+  $('dir-hire').hidden = false; showConvo(true);
   renderThread();
   $('dir-hire-title').focus();
 }
@@ -476,6 +492,7 @@ export function setup() {
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && isOpen()) close(); });
   for (const b of modal.querySelectorAll('.dir-tab')) b.addEventListener('click', () => showTab(b.dataset.tab));
   $('dir-input').addEventListener('submit', sendNow);
+  window.visualViewport?.addEventListener('resize', fitKeyboard); window.visualViewport?.addEventListener('scroll', fitKeyboard);
   $('dir-text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendNow(e); });
   $('dir-stop').addEventListener('click', () => { if (thread?.key) postJ('/api/dm/stop', { key: thread.key }); });
   $('dir-hire-btn').addEventListener('click', startHire);

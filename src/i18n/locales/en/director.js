@@ -11,6 +11,7 @@ export default {
   inputPh: 'Give work, follow up or ask for a fix… (⌘/Ctrl + Enter to send)',
   send: 'Send',
   stop: 'Stop',
+  back: 'Back to the people',
   save: 'Save',
   failed: "That didn't work, try again later.",
   offline: "Can't reach the office's server.",

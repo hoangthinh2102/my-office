@@ -90,3 +90,11 @@ html:not(.is-phone) .ph-close { display: none; }
 
 /* things that only showed on hover get a tap path */
 @media (hover: none) { .msg-copy, .todo-del { opacity: .8; } }
+
+/* a long message reads in full on a phone: no cut-off fading into the background (scrolling is what a phone is for) */
+.is-phone .msg-body.is-clamped { max-height: none; overflow: visible; -webkit-mask-image: none; mask-image: none; }
+.is-phone .msg-more { display: none; }
+/* streamer mode on this phone: say so, one tap turns it off (settings.js) */
+.stream-pill { display: none; }
+.is-phone body.is-stream .stream-pill { all: unset; position: fixed; z-index: 70; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 54px); display: block; max-width: calc(100% - 32px);
+  padding: 8px 14px; border-radius: 999px; background: var(--card-2); border: 1px solid var(--amber); color: var(--ink); font: 600 .74rem/1.3 var(--font); text-align: center; cursor: pointer; box-shadow: 0 8px 24px rgba(0, 0, 0, .35); }

@@ -1,4 +1,6 @@
 export default {
+  streamPill: 'Đang che nội dung (chế độ quay màn hình) · Tắt',
+  streamOff: 'Đã tắt chế độ quay màn hình: nội dung hiện đầy đủ.',
   language: 'Ngôn ngữ',
   switchingLang: 'Đang đổi ngôn ngữ…',
   toPro: 'Đang dựng văn phòng chuyên nghiệp…',
