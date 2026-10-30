@@ -59,6 +59,7 @@ export function createPerf({ dataDir, schedule, taskOf = () => null, taskInfo = 
   fs.mkdirSync(dir, { recursive: true });
   const open = new Map();   // session key -> the job running
   let todayCache = { day: '', jobs: [] };   // today's finished jobs, for budgets
+  let writeQ = Promise.resolve();
 
   function prune() {
     fsp.readdir(dir).then((names) => {
@@ -109,7 +110,8 @@ export function createPerf({ dataDir, schedule, taskOf = () => null, taskInfo = 
       commits: j.commits, pushes: j.pushes, ciRed: j.ciRed, mrs: (extra?.mrs || []).slice(0, 20), tasks,
       ok: !!ok, why, src: j.src, ot: overtimeMin(j.start, now, schedule()),
     };
-    fsp.appendFile(path.join(dir, `${day(now)}.jsonl`), JSON.stringify(rec) + '\n').catch(() => {});
+    // one write at a time, in order (two jobs ending together would otherwise race)
+    writeQ = writeQ.then(() => fsp.appendFile(path.join(dir, `${day(now)}.jsonl`), JSON.stringify(rec) + '\n')).catch(() => {});
     if (todayCache.day !== day(now)) todayCache = { day: day(now), jobs: [] };
     todayCache.jobs.push(rec);
     return rec;
@@ -137,6 +139,7 @@ export function createPerf({ dataDir, schedule, taskOf = () => null, taskInfo = 
 
   /** The board over the last `days` days: per person, per project, per Lark task, the latest jobs, and the totals. */
   async function board(days = 7) {
+    await writeQ;   // (the jobs just finished are on disk)
     days = Math.max(1, Math.min(KEEP_DAYS, Math.round(days) || 7));
     const jobs = await readDays(days);
     const group = (keyOf, nameOf) => {
