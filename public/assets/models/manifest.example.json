@@ -1,0 +1,6 @@
+{
+  "models": [
+    { "file": "example-plant.glb", "at": [3.5, 0, -2.0], "rotY": 0, "fit": 1.2, "layout": "all" },
+    { "file": "example-sofa.glb", "at": [9.0, 0, 5.5], "rotY": 180, "fit": 2.0, "layout": "pro", "shadow": true }
+  ]
+}

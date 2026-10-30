@@ -1,0 +1,26 @@
+# Local state: access token, phone PIN, replay logs, process owners, server log
+data/
+node_modules/
+# Machine-specific copy of the login service (the CLI writes its own to ~/Library/LaunchAgents)
+com.my-office.plist
+com.claude-office.plist
+.DS_Store
+# Next.js
+.next/
+.next-e2e/
+next-env.d.ts
+*.tsbuildinfo
+# tests
+test-results/
+test-results-*/
+.next-*/
+playwright-report/
+
+# the online demo build (scripts/build-demo.mjs)
+/.demo-build/
+/demo-site/
+/out/
+
+# 3D models of your own (docs/3D-ASSETS.md): kept out of git unless you choose to add them
+public/assets/models/*
+!public/assets/models/manifest.example.json
