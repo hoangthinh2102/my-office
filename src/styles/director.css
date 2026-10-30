@@ -85,6 +85,14 @@
 .dir-table a { color: var(--blue); text-decoration: none; }
 .dir-table a:hover { text-decoration: underline; }
 
+/* their earlier work (folded) */
+.dir-hist { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px 10px; border: 1px dashed var(--line-2); border-radius: 12px; }
+.dir-hist[open] { display: flex; }
+.dir-hist summary { cursor: pointer; font-size: .76rem; font-weight: 600; color: var(--muted); }
+.dir-hist .dir-hist-msg { opacity: .78; font-size: .8rem; }
+.dir-hist-tools { align-self: center; font-size: .7rem; color: var(--faint); }
+.dir-hist-hint { align-self: center; text-align: center; }
+
 /* a plan waiting for the director */
 .dir-approve { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--amber); background: var(--amber-soft); font-size: .8rem; font-weight: 600; }
 .dir-approve span { flex: 1; }

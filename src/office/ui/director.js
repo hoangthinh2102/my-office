@@ -27,6 +27,7 @@ const api = (p) => `${p}${TOKEN ? `${p.includes('?') ? '&' : '?'}k=${encodeURICo
 const getJ = (p) => fetch(api(p), { cache: 'no-store' }).then((r) => r.json()).catch(() => null);
 const postJ = (p, body) => fetch(api(p), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json()).catch(() => ({ ok: false }));
 
+let history = [];   // what the selected person did before (their own conversation), shown above your messages
 let modal, tab = 'talk', co = null, sel = null, thread = null, hiring = false, perfDays = 7, perfData = null, unread = 0, perfT = null, forceArmed = false;
 const PERM_KEYS = ['ask', 'dev', 'qa', 'reviewer'];
 // a <select> of permission profiles, and one of the people to hand finished work to
@@ -117,16 +118,30 @@ const personOf = (key) => co?.people?.find((p) => p.sid === key) || null;
 async function select(key) {
   sel = key; hiring = false; $('dir-hire').hidden = true;
   for (const b of $('dir-plist').querySelectorAll('.dir-person')) b.classList.toggle('is-sel', b.dataset.key === key);
-  thread = (co?.dms || []).find((d) => d.key === key) || null;
+  thread = (co?.dms || []).find((d) => d.key === key) || null; history = [];
   renderThread();
   await loadThread(key);
 }
 async function loadThread(key) {
   if (DEMO || !key) return;
-  const j = await getJ(`/api/dm?key=${encodeURIComponent(key)}`);
+  const [j, h] = await Promise.all([getJ(`/api/dm?key=${encodeURIComponent(key)}`), getJ(`/api/dm/history?key=${encodeURIComponent(key)}`)]);
   if (sel !== key) return;
   thread = j?.ok ? j.d : null;
+  history = h?.items || [];
   renderThread();
+}
+// their earlier work, folded: what they were asked, what they answered, how many steps in between
+function historyNode() {
+  const box = el('details', 'dir-hist'); box.open = !thread?.msgs?.length;
+  const asks = history.filter((x) => x.role === 'user').length;
+  box.append(el('summary', null, T('history.title', { n: asks })));
+  for (const it of history) {
+    if (it.role === 'tools') { box.append(el('div', 'dir-hist-tools', T('history.tools', { n: it.n }))); continue; }
+    const b = el('div', `dir-msg dir-hist-msg${it.role === 'user' ? ' is-me' : ''}`);
+    if (it.role === 'user') b.append(el('span', 'dir-tag', T('history.you')), document.createTextNode(it.text)); else b.append(mdBlocks(it.text));
+    box.append(b);
+  }
+  return box;
 }
 function renderHead() {
   const head = $('dir-chead');
@@ -193,7 +208,8 @@ function renderThread() {
   }
   if (!sel) { box.replaceChildren(el('p', 'dir-empty', T('pick'))); $('dir-mode').textContent = ''; return; }
   const msgs = thread?.msgs || [];
-  box.replaceChildren(...(msgs.length ? msgs.map(msgNode) : [el('p', 'dir-empty', T('first', { name: personOf(sel)?.name || thread?.name || '' }))]));
+  box.replaceChildren(...(history.length ? [historyNode()] : []),
+    ...(msgs.length ? msgs.map(msgNode) : [el('p', history.length ? 'dir-note dir-hist-hint' : 'dir-empty', T(history.length ? 'history.hint' : 'first', { name: personOf(sel)?.name || thread?.name || '' }))]));
   if (thread?.running) box.append(el('div', 'dir-typing', T('typing', { name: personOf(sel)?.name || thread?.name || '' })));
   box.scrollTop = box.scrollHeight;
   const p = personOf(sel);

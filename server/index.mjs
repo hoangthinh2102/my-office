@@ -2372,6 +2372,22 @@ const server = http.createServer((req, res) => {
       perms: Object.keys(PERMS), budgetNow: budgetPub(), terminal: process.platform === 'darwin' || process.platform === 'linux' }));
     return;
   }
+  if (url.pathname === '/api/dm/history') {   // what this person did before you wrote to them here (their own conversation, e.g. in the editor)
+    const key = String(url.searchParams.get('key') || ''), d = dms[key], s = [...sessions.values()].find((x) => x.sid === key);
+    const who = s || (d?.sid && d.dir ? { sid: d.sid, cwd: d.dir } : null);
+    if (!who) { json(res, 200, { items: [] }); return; }
+    const before = d?.msgs?.[0]?.at || Infinity;   // (what came after is already in the director's conversation)
+    readLog(who, 200).then((items) => {
+      const out = [];
+      for (const it of items) {
+        if (it.ts && it.ts >= before) break;
+        if (it.role === 'tool') { const last = out.at(-1); if (last?.role === 'tools') last.n++; else out.push({ role: 'tools', n: 1, ts: it.ts }); continue; }
+        if (it.role === 'user' || it.role === 'claude') out.push({ role: it.role, text: clip(it.text, it.role === 'claude' ? 3000 : 1500), ts: it.ts });
+      }
+      json(res, 200, { items: out.slice(-24) });
+    }).catch(() => json(res, 200, { items: [] }));
+    return;
+  }
   if (url.pathname === '/api/dm') { const d = dms[String(url.searchParams.get('key') || '')]; json(res, 200, d ? { ok: true, d: dmPub(d) } : { ok: false }); return; }   // (none yet: not an error)
   if (url.pathname === '/api/models') {   // your own 3D models (public/assets/models/manifest.json; none: an empty list, not a 404)
     fsp.readFile(path.join(ROOT, 'public', 'assets', 'models', 'manifest.json'), 'utf8').then((t) => { const j = JSON.parse(t); json(res, 200, { models: Array.isArray(j) ? j : j.models || [] }); })
