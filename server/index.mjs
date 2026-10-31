@@ -26,7 +26,8 @@ import { createTrophies } from './trophies.mjs';
 import { createGit } from './git.mjs';
 import { weekSummary } from './wrapped.mjs';
 import { createPrefs } from './prefs.mjs';
-import { createCompany, minutes, PERMS, permArgs } from './company.mjs';
+import { createCompany, minutes, PERMS, permArgs, DEFAULT_PERM } from './company.mjs';
+import { ASK_PROTOCOL, parseAsk, answerText } from './asks.mjs';
 import { createAgentSupport } from './agent-support.mjs';
 import { createPerf } from './perf.mjs';
 import { pickLang, createT } from '../src/i18n/index.js';
@@ -610,8 +611,9 @@ function runSettings() {
 }
 /** the flags for a run the office starts: its own hooks, and what this person may do without asking */
 const runExtra = (role) => { const f = runSettings(); return [...(f ? ['--settings', f] : []), ...permArgs(role?.perm)]; };
-// what goes into Claude's system prompt for a run: the role; the rules too where no hook gives them
-const officeSystem = (sid, role = null) => company.rulesContext(role || company.roleOf(sid), { rules: process.platform === 'win32' && !rulesHookOn() });
+// what goes into Claude's system prompt for a run: the role; the rules too where no hook gives them; for a conversation
+// in the director's office, how to stop and wait for the director (a report with buttons: server/asks.mjs)
+const officeSystem = (sid, role = null, { asks = false } = {}) => [company.rulesContext(role || company.roleOf(sid), { rules: process.platform === 'win32' && !rulesHookOn() }), asks ? ASK_PROTOCOL : ''].filter(Boolean).join('\n\n');
 
 /* ---------- token budgets (the director's office → Automation): tokens a day per person and per project ----------
    At 80% a warning (the office, the group chat, your phone); at 100% another, and with "stop" on, a run the office
@@ -688,7 +690,7 @@ const dmSave = () => {
   }, 500);
 };
 const dmPub = (d, n = 80) => ({ key: d.key, name: d.name, dir: tilde(d.dir), sid: d.sid || null, branch: d.branch && d.branch !== d.sid ? d.branch : null, running: !!d.running,
-  ws: !!d.ws, role: company.roleOf(d.sid) || null, msgs: d.msgs.slice(-n), at: d.at || 0, awaiting: !!d.awaiting });
+  ws: !!d.ws, role: company.roleOf(d.sid) || null, msgs: d.msgs.slice(-n), at: d.at || 0, awaiting: !!d.awaiting, ask: d.awaiting ? d.ask || { kind: 'approve' } : null, gate: !!d.gate });
 function dmAdd(d, m, was = null) {
   d.msgs.push({ id: crypto.randomUUID().slice(0, 8), at: Date.now(), ...m });
   if (d.msgs.length > 120) d.msgs = d.msgs.slice(-120);
@@ -707,7 +709,7 @@ function dmSend(b) {
     const want = String(b.hire.dir || '').replace(/^~(?=$|\/)/, os.homedir());
     if (want === '@workspace') { ws = agentSupport.workspace(); dir = ws?.root; } else dir = knownDirs.find((x) => x === want);
     if (!dir || !fs.existsSync(dir)) return { ok: false, code: 'noDir' };
-    role = { title: String(b.hire.title || '').trim().slice(0, 60), brief: String(b.hire.brief || '').trim().slice(0, 600), perm: Object.hasOwn(PERMS, b.hire.perm) ? b.hire.perm : 'ask', next: String(b.hire.next || '') };
+    role = { title: String(b.hire.title || '').trim().slice(0, 60), brief: String(b.hire.brief || '').trim().slice(0, 600), perm: Object.hasOwn(PERMS, b.hire.perm) ? b.hire.perm : DEFAULT_PERM, next: String(b.hire.next || '') };
     if (!b.force) { const over = overBudget(null, path.basename(dir)); if (over) return { ok: false, code: 'overBudget', over }; }
     const key = `new-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
     d = dms[key] = { key, sid: null, name: role.title || path.basename(dir), dir, ws: !!ws, msgs: [], at: Date.now(), auto: !!b.auto, gate: b.gate || null };
@@ -719,6 +721,7 @@ function dmSend(b) {
     if (!d) return { ok: false, code: 'noDir' };
     if (s && !company.roleOf(sid)?.title) d.name = s.title || s.name || d.name;   // (someone you hired keeps the name you gave)
     if (d.running) return { ok: false, code: 'busy' };
+    if (!b.chain) { d.awaiting = false; d.ask = null; }   // (what you write answers whatever they were waiting for)
     dir = s?.cwd || d.dir;
     if (!dir || !fs.existsSync(dir)) return { ok: false, code: 'noDir' };
     if (!b.force) { const over = overBudget(sid, path.basename(dir)); if (over) return { ok: false, code: 'overBudget', over }; }
@@ -729,7 +732,7 @@ function dmSend(b) {
   }
   // someone hired for the whole workspace keeps every repo of it open to their tools, message after message
   const addDirs = d.ws ? (ws || agentSupport.workspace())?.repos.map((x) => x.dir) || [] : [];
-  const r = tasks.start({ dir, text, images: [], from, system: officeSystem(d.sid, role), addDirs, extra: runExtra(role) });
+  const r = tasks.start({ dir, text, images: [], from, system: officeSystem(d.sid, role, { asks: true }), addDirs, extra: runExtra(role) });
   if (!r.ok) { if (b?.hire) delete dms[d.key]; return { ok: false, code: r.code }; }
   d.running = r.task.id;
   if (b.chain?.from) dmAdd(d, { from: 'sys', text: tr('director.handoff.received', { from: b.chain.from }) });
@@ -746,34 +749,44 @@ function dmDone(t) {
   d.running = false;
   if (t.sid) d.branch = t.sid;
   const failed = !!(t.error && !t.result);
-  const text = failed ? tr('chat.task.failed', { folder: path.basename(t.dir), error: clip(oneLine(t.error), 200) }) : String(t.result || tr('chat.task.doneEmpty')).slice(0, 12000);
-  if (d.gate && !failed && d.sid) d.awaiting = true;   // (a plan that waits for your approval before any work)
-  dmAdd(d, { from: 'agent', text, usage: t.usage || null, error: failed }, was !== d.key ? was : null);
+  // a reply that stops to wait for you (a phase to approve, a choice): a report with buttons (server/asks.mjs)
+  const said = failed ? { text: tr('chat.task.failed', { folder: path.basename(t.dir), error: clip(oneLine(t.error), 200) }), ask: null } : parseAsk(String(t.result || tr('chat.task.doneEmpty')));
+  const text = said.text.slice(0, 12000);
+  d.awaiting = false; d.ask = null;
+  if (d.gate && !failed && d.sid) { d.awaiting = true; d.ask = said.ask?.kind === 'choose' ? said.ask : { kind: 'approve' }; }   // (a plan that waits for your approval before any work)
+  else if (said.ask && d.sid) { d.awaiting = true; d.ask = said.ask; }
+  dmAdd(d, { from: 'agent', text, usage: t.usage || null, error: failed, ...(d.awaiting ? { ask: d.ask } : {}) }, was !== d.key ? was : null);
   if (d.awaiting) {
-    dmAdd(d, { from: 'sys', text: tr('director.approve.waiting') });
-    pushOut({ title: tr('director.approve.pushTitle', { name: d.name }), body: clip(oneLine(text), 180), tag: `plan-${d.key}`, url: '/?director', urgent: true });
+    dmAdd(d, { from: 'sys', text: tr(d.gate ? 'director.approve.waiting' : 'director.ask.waiting') });
+    pushOut({ title: tr(d.gate ? 'director.approve.pushTitle' : 'director.ask.pushTitle', { name: d.name }), body: clip(oneLine(text), 180), tag: `plan-${d.key}`, url: '/?director', urgent: true });
     return;
   }
   pushOut({ title: `👔 ${d.name}`, body: clip(oneLine(text), 180), tag: `dm-${d.key}`, url: '/?director' });
   if (!failed) handOver(d, t, text);
 }
-/* Your answer to a plan that waits (the morning run): approve, and the person gets the permission profile set for the
-   morning run and starts on it; or send it back with your note, and they revise the plan, still read only. No time
-   limit: it waits as long as it takes you. */
-function dmApprove(key, ok, note = '') {
+/* Your answer to a report that waits for you: approve it (a note optional), pick from its options, or send it back with
+   your note. A plan from the morning run is the same, and approving it (or picking) also gives the person the
+   permission profile set for the morning run. No time limit: it waits as long as it takes you. */
+function dmApprove(key, ok, note = '', pick = []) {
   const d = dms[key]; if (!d?.awaiting || !d.sid) return { ok: false, code: 'notWaiting' };
   if (d.running) return { ok: false, code: 'busy' };
   note = String(note || '').trim().slice(0, 2000);
-  if (!ok && !note) return { ok: false, code: 'empty' };
-  if (ok) {
+  const ask = d.ask || { kind: 'approve' };
+  pick = ask.kind === 'choose' && Array.isArray(pick) ? [...new Set(pick.map(Number).filter((i) => Number.isInteger(i) && i >= 0 && i < ask.options.length))] : [];
+  if (!ask.multi) pick = pick.slice(0, 1);
+  const go = ok || pick.length > 0;
+  if (!go && !note) return { ok: false, code: 'empty' };
+  const gate = d.gate;
+  if (go && gate) {
     const role = company.roleOf(d.sid) || {};
-    company.setRole(d.sid, { ...role, brief: '', perm: d.gate });
+    company.setRole(d.sid, { ...role, brief: '', perm: gate });
     d.gate = null;
   }
-  d.awaiting = false;
-  const r = dmSend({ sid: d.sid, text: ok ? tr('director.approve.goMsg', { note: note ? `\n\n${note}` : '' }) : tr('director.approve.reviseMsg', { note }), force: true });
-  if (!r.ok) { d.awaiting = true; if (ok) { /* (kept: approved, but couldn't start; it can be sent again) */ } return r; }
-  fsp.appendFile(ACTION_LOG, `${new Date().toISOString()} director plan ${ok ? 'approved' : 'sent back'} ${d.sid}\n`).catch(() => {});
+  const text = gate && !pick.length ? (go ? tr('director.approve.goMsg', { note: note ? `\n\n${note}` : '' }) : tr('director.approve.reviseMsg', { note }))
+    : answerText(ask, { ok: go, pick, note }, tr);
+  const r = dmSend({ sid: d.sid, text, force: true });
+  if (!r.ok) { d.awaiting = true; d.ask = ask; if (go && gate) d.gate = gate; return r; }
+  fsp.appendFile(ACTION_LOG, `${new Date().toISOString()} director ${gate ? 'plan' : 'report'} ${pick.length ? `chose ${pick.join(',')}` : go ? 'approved' : 'sent back'} ${d.sid}\n`).catch(() => {});
   return { ok: true, key: d.key };
 }
 // finished work goes on to whoever this person hands over to (Dev → Reviewer → QA), with what was asked and what was done
@@ -1148,8 +1161,13 @@ async function onHook(p) {
 
 /* ---------- conversation view ---------- */
 const STRIP_TAGS = /<(system-reminder|ide_selection|ide_opened_file|command-message|command-name|command-args|local-command-stdout|local-command-stderr|local-command-caveat|task-notification|user-prompt-submit-hook|agent-message)[^>]*>[\s\S]*?<\/\1>/g;
-async function readLog(s, n = 120, agentId = null) {
-  let file = s.transcript || (s.sid && s.cwd ? path.join(CLAUDE_DIR, 'projects', s.cwd.replace(/[^A-Za-z0-9-]/g, '-'), `${s.sid}.jsonl`) : null);
+const mtimeOf = (f) => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } };
+async function readLog(s, n = 120, agentId = null, { branch = false } = {}) {
+  let file = transcriptOf(s);
+  // (the session drawer: what you said to this person from the director's office went on in a branch of their
+  // conversation, with all of it before; while that branch is the newer one, it is the one to read)
+  const d = branch && !agentId && s.sid ? dms[s.sid] : null;
+  if (d?.branch && d.branch !== s.sid) { const bf = transcriptOf({ sid: d.branch, cwd: s.cwd || d.dir }); if (bf && mtimeOf(bf) > mtimeOf(file)) file = bf; }
   if (agentId) {
     const dir = subDir(s);
     file = dir && /^[A-Za-z0-9_-]+$/.test(agentId) ? path.join(dir, `agent-${agentId}.jsonl`) : null;
@@ -1336,7 +1354,10 @@ const lockMsg = (until) => tr('server.pin.locked', { n: Math.max(1, Math.ceil((u
 const presence = new Map();   // page id -> { focused, at }
 const officeFocused = () => { const now = Date.now(); for (const p of presence.values()) if (p.focused && now - p.at < 5000) return true; return false; };
 const pending = new Map();    // request id -> held request
-const permPub = (p) => ({ id: p.id, sess: p.sess, name: p.name, tool: p.tool, type: p.type, label: p.label, detail: p.detail, remember: p.remember, at: p.at, until: p.until,
+// a held request from a run the director's office started: that conversation (its key), so it shows there with buttons
+const dmOf = (sid) => { if (!sid) return null; const t = tasks.list().find((x) => x.sid === sid && x.from?.dm); const d = t ? dms[t.from.dm] : Object.values(dms).find((x) => x.running && (x.branch === sid || x.sid === sid)); return d?.key || null; };
+const permPub = (p) => { const dm = dmOf(p.sid); return permOut(p, dm); };
+const permOut = (p, dm) => ({ id: p.id, sess: p.sess, dm, name: (dm && dms[dm]?.name) || p.name, tool: p.tool, type: p.type, label: p.label, detail: p.detail, remember: p.remember, at: p.at, until: p.until,
   kind: p.kind || 'perm', questions: p.questions, plan: p.plan });
 function settlePerm(id, body = '') {
   const p = pending.get(id); if (!p) return;
@@ -1376,7 +1397,7 @@ async function onPermission(p, res, long = false) {
   const c = await classifyVi(p.tool_name, p.tool_input);
   const suggestion = Array.isArray(p.permission_suggestions) ? p.permission_suggestions.find((x) => x && x.type === 'addRules' && x.behavior === 'allow') || null : null;
   const id = crypto.randomUUID(), now = Date.now();
-  const entry = { id, res, sess: s?.id || null, name: s?.name || base(p.cwd) || 'claude', tool: p.tool_name, type: c.type, label: c.label, detail: permDetail(p),
+  const entry = { id, res, sess: s?.id || null, sid: p.session_id, name: s?.name || base(p.cwd) || 'claude', tool: p.tool_name, type: c.type, label: c.label, detail: permDetail(p),
     remember: suggestion ? ruleText(suggestion) : null, suggestion, at: now, until: now + (long ? LONG_WAIT : 45_000) };
   entry.timer = setTimeout(() => settlePerm(id), long ? LONG_WAIT : 45_000);
   pending.set(id, entry);
@@ -1399,7 +1420,7 @@ async function onQuestion(p, res, long = false) {
   if (!p || !p.session_id || !ASK_TOOLS.has(p.tool_name) || (!officeFocused() && !long)) { res.writeHead(200).end(''); return; }
   let s = bySid(p.session_id); if (!s) { await scanSessions(); s = bySid(p.session_id); }
   const i = p.tool_input || {}, id = crypto.randomUUID(), now = Date.now(), txt = (v, n) => clip(redact(oneLine(v)), n);
-  const entry = { id, res, sess: s?.id || null, name: s?.name || base(p.cwd) || 'claude', tool: p.tool_name, input: i, at: now, until: now + (long ? LONG_WAIT : 45_000) };
+  const entry = { id, res, sess: s?.id || null, sid: p.session_id, name: s?.name || base(p.cwd) || 'claude', tool: p.tool_name, input: i, at: now, until: now + (long ? LONG_WAIT : 45_000) };
   if (p.tool_name === 'AskUserQuestion') {
     const qs = Array.isArray(i.questions) ? i.questions.slice(0, 4) : [];
     if (!qs.length) { res.writeHead(200).end(''); return; }
@@ -2177,7 +2198,7 @@ const server = http.createServer((req, res) => {
     if (!isLoopback(req) && !prefs.get('phoneTasks')) { json(res, 403, { ok: false, code: 'notAllowed', message: tr('chat.task.notAllowed') }); return; }
     readJson(req, 64_000).then((b) => {
       if (url.pathname === '/api/dm/stop') { const d = dms[String(b?.key || '')]; json(res, 200, { ok: !!(d?.running && tasks.stop(d.running)) }); return; }
-      if (url.pathname === '/api/dm/approve') { const r = dmApprove(String(b?.key || ''), !!b?.ok, b?.note); json(res, r.ok ? 200 : 409, r.ok ? r : { ...r, message: tr(`director.approve.why.${r.code}`) }); return; }
+      if (url.pathname === '/api/dm/approve') { const r = dmApprove(String(b?.key || ''), !!b?.ok, b?.note, b?.pick); json(res, r.ok ? 200 : 409, r.ok ? r : { ...r, message: tr(`director.approve.why.${r.code}`) }); return; }
       const r = dmSend({ ...b, auto: false, chain: null });   // (hand-overs and the morning run are the server's own)
       json(res, r.ok ? 200 : 409, r.ok ? r : { ...r, message: r.code === 'overBudget' ? tr('director.budget.ask', { used: num(Math.round(r.over.used / 1000)), limit: num(Math.round(r.over.limit / 1000)) }) : tr(`chat.task.why.${r.code}`) });
     });
@@ -2396,20 +2417,39 @@ const server = http.createServer((req, res) => {
       perms: Object.keys(PERMS), budgetNow: budgetPub(), terminal: process.platform === 'darwin' || process.platform === 'linux' }));
     return;
   }
-  if (url.pathname === '/api/dm/history') {   // what this person did before you wrote to them here (their own conversation, e.g. in the editor)
+  if (url.pathname === '/api/dm/history') {   // this person's own conversation (the editor, a terminal), before and after you wrote to them here
     const key = String(url.searchParams.get('key') || ''), d = dms[key], s = [...sessions.values()].find((x) => x.sid === key);
     const who = s || (d?.sid && d.dir ? { sid: d.sid, cwd: d.dir } : null);
     if (!who) { json(res, 200, { items: [] }); return; }
-    const before = d?.msgs?.[0]?.at || Infinity;   // (what came after is already in the director's conversation)
-    readLog(who, 200).then((items) => {
+    // what is already in the director's conversation (what you sent, their answers) isn't shown twice
+    const norm = (t) => String(t || '').replace(/\[\[office:[^\]]*\]\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 160);
+    const seen = new Set((d?.msgs || []).filter((m) => m.from !== 'sys').map((m) => norm(m.text)));
+    readLog(who, 240).then((items) => {
       const out = [];
       for (const it of items) {
-        if (it.ts && it.ts >= before) break;
         if (it.role === 'tool') { const last = out.at(-1); if (last?.role === 'tools') last.n++; else out.push({ role: 'tools', n: 1, ts: it.ts }); continue; }
-        if (it.role === 'user' || it.role === 'claude') out.push({ role: it.role, text: clip(it.text, it.role === 'claude' ? 3000 : 1500), ts: it.ts });
+        if ((it.role === 'user' || it.role === 'claude') && !seen.has(norm(it.text))) out.push({ role: it.role, text: clip(it.text, it.role === 'claude' ? 3000 : 1500), ts: it.ts });
       }
-      json(res, 200, { items: out.slice(-24) });
+      json(res, 200, { items: out.slice(-40) });
     }).catch(() => json(res, 200, { items: [] }));
+    return;
+  }
+  if (url.pathname === '/api/dm/live') {   // the work going on now, step by step (the run's own conversation: a branch, or a new hire's)
+    const d = dms[String(url.searchParams.get('key') || '')];
+    const t = d?.running ? tasks.list().find((x) => x.id === d.running) : null;
+    const sid = t?.sid || d?.branch || d?.sid, dir = t?.dir || d?.dir;
+    if (!d || !sid || !dir) { json(res, 200, { items: [], running: !!d?.running }); return; }
+    const s = [...sessions.values()].find((x) => x.sid === sid) || { sid, cwd: dir };
+    const since = [...d.msgs].reverse().find((m) => m.from === 'me' || m.from === 'handoff' || m.from === 'auto')?.at || 0;
+    readLog(s, 160).then((items) => {
+      const out = [];
+      for (const it of items) {
+        if (it.ts && it.ts < since - 2000) continue;
+        if (it.role === 'tool') { out.push({ role: 'tool', text: clip([it.label, it.desc].filter(Boolean).join(' · '), 160), ts: it.ts }); continue; }
+        if (it.role === 'claude') out.push({ role: 'claude', text: clip(it.text, 3000), ts: it.ts });
+      }
+      json(res, 200, { items: out.slice(-30), running: !!d.running });
+    }).catch(() => json(res, 200, { items: [], running: !!d.running }));
     return;
   }
   if (url.pathname === '/api/dm') { const d = dms[String(url.searchParams.get('key') || '')]; json(res, 200, d ? { ok: true, d: dmPub(d) } : { ok: false }); return; }   // (none yet: not an error)
@@ -2472,7 +2512,7 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/log') {
     const s = [...sessions.values()].find((x) => x.id === url.searchParams.get('id'));
     if (!s) { json(res, 404, { items: [] }); return; }
-    readLog(s, 120, url.searchParams.get('agent')).then((items) => json(res, 200, { items })).catch(() => json(res, 200, { items: [] }));
+    readLog(s, 120, url.searchParams.get('agent'), { branch: true }).then((items) => json(res, 200, { items })).catch(() => json(res, 200, { items: [] }));
     return;
   }
   if (url.pathname === '/api/timeline') {

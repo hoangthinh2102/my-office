@@ -43,7 +43,8 @@ export default async function DirectorModal() {
               </div>
             </form>
             <div className="dir-approve" id="dir-approve" hidden>
-              <span>{t('director.approve.bar')}</span>
+              <span id="dir-approve-text">{t('director.approve.bar')}</span>
+              <div className="dir-opts" id="dir-opts"></div>
               <button type="button" className="btn" id="dir-approve-no">{t('director.approve.revise')}</button>
               <button type="button" className="btn btn--primary" id="dir-approve-ok">{t('director.approve.ok')}</button>
             </div>

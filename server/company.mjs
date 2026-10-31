@@ -44,28 +44,33 @@ export function cleanSchedule(x = {}) {
 
 const DEFAULT_RULES = '';
 
-/* What a person may do without asking (a run the office starts: claude -p with these flags). 'ask' leaves every
-   approval to you (in the office, or on your phone); the others let routine work through and keep the risky things
-   out. Deny rules win over allow rules; agent-support's own guard hook still blocks pushing to main / dev. */
+/* What a person may do without asking (a run the office starts: claude -p with these flags). 'auto' (the default) is
+   Claude Code's auto mode, as in your own sessions: Claude decides what is safe by itself, with your autoMode rules
+   from ~/.claude/settings.json, and only what it would ask you about comes to you (in the office, or on your phone).
+   'ask' leaves every approval to you. The job profiles run in auto mode too, with their own allow and deny lists.
+   Deny rules win over allow rules; agent-support's own guard hook still blocks pushing to main / dev. */
 const READ = ['Read', 'Grep', 'Glob', 'LS', 'WebSearch', 'WebFetch', 'Skill', 'TodoWrite', 'Task', 'Agent', 'TaskCreate', 'TaskUpdate', 'TaskList'];
 const SHELL_READ = ['git status', 'git diff', 'git log', 'git show', 'git branch', 'git fetch', 'ls', 'cat', 'head', 'tail', 'wc', 'grep', 'rg', 'find', 'pwd', 'which', 'python3'].map((c) => `Bash(${c}:*)`);
 const SHELL_BUILD = ['git', 'npm', 'npx', 'pnpm', 'yarn', 'bun', 'node', 'tsc', 'go', 'make', 'cargo', 'pytest', 'mkdir', 'cp', 'mv', 'touch'].map((c) => `Bash(${c}:*)`);
+const NEVER_EVER = ['git push --force', 'git push -f', 'git push origin main', 'git push origin master'].map((c) => `Bash(${c}:*)`);
 const NEVER = ['git push --force', 'git push -f', 'git push origin main', 'git push origin master', 'git push origin dev', 'git reset --hard', 'rm -rf', 'sudo', 'git clean -fd'].map((c) => `Bash(${c}:*)`);
 export const PERMS = {
-  ask: null,
-  dev: { mode: 'acceptEdits', allow: [...READ, 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', ...SHELL_READ, ...SHELL_BUILD], deny: NEVER },
-  qa: { mode: 'acceptEdits', allow: [...READ, 'Edit', 'MultiEdit', 'Write', ...SHELL_READ, ...SHELL_BUILD], deny: [...NEVER, 'Bash(git push:*)'] },
-  reviewer: { mode: 'default', allow: [...READ, ...SHELL_READ], deny: [...NEVER, 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'Bash(git commit:*)', 'Bash(git push:*)'] },
+  auto: { mode: 'auto', allow: [], deny: NEVER_EVER },
+  ask: { mode: 'default', allow: [], deny: [] },
+  dev: { mode: 'auto', allow: [...READ, 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', ...SHELL_READ, ...SHELL_BUILD], deny: NEVER },
+  qa: { mode: 'auto', allow: [...READ, 'Edit', 'MultiEdit', 'Write', ...SHELL_READ, ...SHELL_BUILD], deny: [...NEVER, 'Bash(git push:*)'] },
+  reviewer: { mode: 'auto', allow: [...READ, ...SHELL_READ], deny: [...NEVER, 'Edit', 'MultiEdit', 'Write', 'NotebookEdit', 'Bash(git commit:*)', 'Bash(git push:*)'] },
 };
 /** the command-line flags for a permission profile */
+export const DEFAULT_PERM = 'auto';
 export function permArgs(perm) {
-  const p = PERMS[perm]; if (!p) return [];
-  return ['--permission-mode', p.mode, '--allowedTools', ...p.allow, '--disallowedTools', ...p.deny];
+  const p = PERMS[perm] || PERMS[DEFAULT_PERM];
+  return ['--permission-mode', p.mode, ...(p.allow.length ? ['--allowedTools', ...p.allow] : []), ...(p.deny.length ? ['--disallowedTools', ...p.deny] : [])];
 }
 export const DEFAULT_BUDGET = Object.freeze({ personDay: 0, projectDay: 0, stop: false });   // tokens a day (0: no limit)
 // the morning run: on by default, Monday to Friday (the schedule's days); with `approve`, it only reads and proposes a plan,
 // and gets `perm` once you approve it
-export const DEFAULT_AUTO = Object.freeze({ on: process.env.OFFICE_AUTO_DEFAULT !== 'off', at: '', prompt: '/daily-tasks', title: 'Trưởng nhóm', perm: 'dev', approve: true, last: '' });
+export const DEFAULT_AUTO = Object.freeze({ on: process.env.OFFICE_AUTO_DEFAULT !== 'off', at: '', prompt: '/daily-tasks', title: 'Trưởng nhóm', perm: 'auto', approve: true, last: '' });
 const cleanBudget = (b = {}) => ({ personDay: Math.max(0, Math.min(1e9, Math.round(Number(b?.personDay) || 0))), projectDay: Math.max(0, Math.min(1e9, Math.round(Number(b?.projectDay) || 0))), stop: !!b?.stop });
 const cleanAuto = (a = {}, prev = DEFAULT_AUTO) => ({ on: !!a?.on, at: HHMM.test(String(a?.at || '')) ? a.at : '', prompt: String(a?.prompt ?? prev.prompt).trim().slice(0, 400) || DEFAULT_AUTO.prompt,
   title: String(a?.title ?? prev.title).trim().slice(0, 60), perm: Object.hasOwn(PERMS, a?.perm) ? a.perm : prev.perm, approve: typeof a?.approve === 'boolean' ? a.approve : prev.approve !== false,
@@ -134,12 +139,12 @@ export function createCompany({ dataDir, claudeDir }) {
     autoRan(dayKey) { c.auto = { ...c.auto, last: dayKey }; save(); },
     /** a role for a conversation (session id): a title, a brief, what they may do without asking (PERMS), and whom
         they hand their finished work to (another conversation's id). Empty, it is taken away. */
-    setRole(sid, { title = '', brief = '', perm = 'ask', next = '' } = {}) {
+    setRole(sid, { title = '', brief = '', perm = DEFAULT_PERM, next = '' } = {}) {
       if (!/^[\w-]{8,64}$/.test(String(sid || ''))) return false;
       title = String(title).trim().slice(0, 60); brief = String(brief).trim().slice(0, MAX_ROLE);
-      perm = Object.hasOwn(PERMS, perm) ? perm : 'ask';
+      perm = Object.hasOwn(PERMS, perm) ? perm : DEFAULT_PERM;
       next = /^[\w-]{8,64}$/.test(String(next || '')) && next !== sid ? String(next) : '';
-      if (!title && !brief && perm === 'ask' && !next) delete c.roles[sid]; else c.roles[sid] = { title, brief, perm, next };
+      if (!title && !brief && perm === DEFAULT_PERM && !next) delete c.roles[sid]; else c.roles[sid] = { title, brief, perm, next };
       const keys = Object.keys(c.roles); if (keys.length > 300) for (const k of keys.slice(0, keys.length - 300)) delete c.roles[k];
       save();
       return true;

@@ -21,6 +21,8 @@ export function reportPresence() {
   const focused = !DEMO && state.permOn && document.visibilityState === 'visible' && document.hasFocus();
   fetch(`/api/presence${TOKEN ? `?k=${encodeURIComponent(TOKEN)}` : ''}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page: PAGE_ID, focused }), keepalive: true }).catch(() => {});
 }
+// time left to answer: seconds, or minutes for a run the office started (it waits up to half an hour)
+const leftText = (ms) => (ms > 120e3 ? tr('time.min', { n: Math.ceil(ms / 60e3) }) : tr('time.sec', { n: Math.ceil(ms / 1000) }));
 // a risky shell command (src/shared/danger.js): a red warning, a second click, no "always"
 const dangerOf = (p) => { const k = dangerKey(p); return k ? tr(`perm.danger.${k}`) : null; };
 // tool types with their own wording under perm.wants; any other tool gets perm.wants.other
@@ -56,13 +58,13 @@ function askBody(card, p) {
   sync();
   return { body: box, send };
 }
-function permCard(p) {
+export function permCard(p) {
   const card = el('div', 'perm-card'); card.dataset.id = p.id; card.dataset.kind = p.kind || 'perm';
   const s = sessions.get(p.sess), dot = el('i'); dot.style.background = s ? colorOf(s) : '#F2B544';
   const ico = el('span', 'pc-ico'); ico.append(icon('alert'));
   const head = el('div', 'pc-head'), who = el('div', 'pc-who');
   const verbText = ' ' + (p.kind === 'ask' ? tr('perm.asks') : p.kind === 'plan' ? tr('perm.plan') : PERM_VERB.has(p.type) ? tr(`perm.wants.${p.type}`) : tr('perm.wants.other', { tool: p.tool }));
-  who.append(dot, el('b', null, dn(s) || p.name), document.createTextNode(verbText));
+  who.append(dot, el('b', null, (p.dm && p.name) || dn(s) || p.name), document.createTextNode(verbText));   // (dm: the name the director's office knows them by)
   if (p.kind === 'ask' || p.kind === 'plan') ico.replaceChildren(icon(p.kind === 'ask' ? 'sparkle' : 'list'));
   const left = el('span', 'pc-left');
   head.append(ico, who, left);
@@ -92,19 +94,49 @@ function permCard(p) {
   }
   // a phone, while the Mac doesn't let phones approve: the card says where to answer it instead of offering buttons
   if (!state.isLocal && !state.phoneApprove && !DEMO) acts.replaceChildren(el('small', 'pc-phone-note', tr('perm.phoneOff')));
-  card._tick = () => { const ms = Math.max(0, p.until - Date.now()); left.textContent = tr('time.sec', { n: Math.ceil(ms / 1000) }); fill.style.width = `${(ms / 45000) * 100}%`; };
+  card._tick = () => { const ms = Math.max(0, p.until - Date.now()); left.textContent = leftText(ms); fill.style.width = `${(ms / Math.max(45000, p.until - p.at)) * 100}%`; };
   card._tick();
   return card;
 }
+// Another view can take some of the requests to show itself (the director's office shows those of the conversation
+// open there, inside it); the stack over the office shows the rest. Views that show requests hear of every change.
+let shownElsewhere = () => false;
+export const permWatch = new Set();
+export function setShownElsewhere(fn) { shownElsewhere = fn || (() => false); renderPerms(); }
 export function renderPerms() {
-  const stack = $('perm-stack'), have = new Set([...stack.children].map((c) => c.dataset.id));
-  for (const c of [...stack.children]) if (!perms.has(c.dataset.id)) c.remove();
-  for (const p of perms.values()) if (!have.has(p.id)) stack.append(permCard(p));
-  stack.hidden = !perms.size;
+  const stack = $('perm-stack'); if (!stack) return;
+  const mine = [...perms.values()].filter((p) => !shownElsewhere(p)), ids = new Set(mine.map((p) => p.id));
+  const have = new Set([...stack.children].map((c) => c.dataset.id));
+  for (const c of [...stack.children]) if (!ids.has(c.dataset.id)) c.remove();
+  for (const p of mine) if (!have.has(p.id)) stack.append(permCard(p));
+  stack.hidden = !mine.length;
+  for (const fn of permWatch) { try { fn(); } catch { /* a view's own trouble */ } }
 }
 export function onPerm(p) {
   perms.set(p.id, p); renderPerms(); sfx.play('perm');
   const w = workers.get(p.sess); if (w) { w.anim = 'hand'; if (!state.selectedId && autoCam()) panTo(w); }
+}
+
+/* a button on a request card (over the office, or inside the director's office): send the answer */
+export async function permClick(ev) {
+  const b = ev.target.closest('[data-perm]'); if (!b) return;
+  const card = b.closest('.perm-card'), id = card.dataset.id, choice = b.dataset.perm;
+  if (card.dataset.risky === '1' && choice === 'allow' && b.dataset.armed !== '1') {
+    b.dataset.armed = '1'; b.firstChild.textContent = tr('perm.allowAgain');
+    setTimeout(() => { if (b.isConnected) { b.dataset.armed = ''; b.firstChild.textContent = tr('perm.allow'); } }, 4000);
+    return;
+  }
+  for (const x of card.querySelectorAll('button, input')) x.disabled = true;
+  b.textContent = tr('perm.sending');
+  const doneMsg = ['allow', 'always', 'deny', 'answer', 'approve', 'revise', 'skip'].includes(choice) ? tr(`perm.done.${choice}`) : undefined;
+  if (DEMO) { toast(tr('perm.demoDone', { done: doneMsg })); perms.delete(id); renderPerms(); return; }
+  try {
+    const r = await fetch(`/api/perm${TOKEN ? `?k=${encodeURIComponent(TOKEN)}` : ''}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, choice, ...(card._payload?.() || {}) }) });
+    const d = await r.json();
+    if (!d.ok) toast(d.message || tr('perm.expired'));
+    else toast(doneMsg || tr('perm.sent'));
+  } catch { toast(tr('perm.unreachable')); }
+  perms.delete(id); renderPerms();
 }
 
 export function setup() {
@@ -115,26 +147,7 @@ export function setup() {
   if (!STATIC) addEventListener('pagehide', () => { try { navigator.sendBeacon(`/api/presence${TOKEN ? `?k=${encodeURIComponent(TOKEN)}` : ''}`, new Blob([JSON.stringify({ page: PAGE_ID, focused: false })], { type: 'application/json' })); } catch { /* ignore */ } });
   setInterval(() => { if (document.hasFocus()) reportPresence(); }, 2000);
   setInterval(() => { for (const c of $('perm-stack').children) c._tick?.(); }, 250);
-  $('perm-stack').addEventListener('click', async (ev) => {
-    const b = ev.target.closest('[data-perm]'); if (!b) return;
-    const card = b.closest('.perm-card'), id = card.dataset.id, choice = b.dataset.perm;
-    if (card.dataset.risky === '1' && choice === 'allow' && b.dataset.armed !== '1') {
-      b.dataset.armed = '1'; b.firstChild.textContent = tr('perm.allowAgain');
-      setTimeout(() => { if (b.isConnected) { b.dataset.armed = ''; b.firstChild.textContent = tr('perm.allow'); } }, 4000);
-      return;
-    }
-    for (const x of card.querySelectorAll('button, input')) x.disabled = true;
-    b.textContent = tr('perm.sending');
-    const doneMsg = ['allow', 'always', 'deny', 'answer', 'approve', 'revise', 'skip'].includes(choice) ? tr(`perm.done.${choice}`) : undefined;
-    if (DEMO) { toast(tr('perm.demoDone', { done: doneMsg })); perms.delete(id); renderPerms(); return; }
-    try {
-      const r = await fetch(`/api/perm${TOKEN ? `?k=${encodeURIComponent(TOKEN)}` : ''}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, choice, ...(card._payload?.() || {}) }) });
-      const d = await r.json();
-      if (!d.ok) toast(d.message || tr('perm.expired'));
-      else toast(doneMsg || tr('perm.sent'));
-    } catch { toast(tr('perm.unreachable')); }
-    perms.delete(id); renderPerms();
-  });
+  $('perm-stack').addEventListener('click', permClick);
   document.addEventListener('keydown', (e) => {
     if (e.code !== 'KeyO' || !state.selectedId || !state.isLocal || e.metaKey || e.ctrlKey || e.altKey || fp.on || e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
     const s = sessions.get(state.selectedId); if (s) { e.preventDefault(); openWindowOf(s); }

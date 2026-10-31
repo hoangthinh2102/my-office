@@ -89,13 +89,30 @@
 .dir-hist { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px 10px; border: 1px dashed var(--line-2); border-radius: 12px; }
 .dir-hist[open] { display: flex; }
 .dir-hist summary { cursor: pointer; font-size: .76rem; font-weight: 600; color: var(--muted); }
-.dir-hist .dir-hist-msg { font-size: .8rem; border-style: dashed; }
+.dir-hist-msg { font-size: .8rem; border-style: dashed; }
 .dir-hist-tools { align-self: center; font-size: .7rem; color: var(--faint); }
 .dir-hist-hint { align-self: center; text-align: center; }
 
-/* a plan waiting for the director */
-.dir-approve { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--amber); background: var(--amber-soft); font-size: .8rem; font-weight: 600; }
-.dir-approve span { flex: 1; }
+/* a report waiting for the director: approve, ask for changes, or pick an option */
+.dir-approve { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--amber); background: var(--amber-soft); font-size: .8rem; font-weight: 600; }
+.dir-approve > span { flex: 1 1 240px; }
+.dir-opts { display: flex; flex-direction: column; gap: 6px; flex: 1 1 100%; order: 2; }
+.dir-opts[hidden] { display: none; }
+.dir-approve #dir-approve-no, .dir-approve #dir-approve-ok { order: 3; }
+.dir-opt { height: auto; min-height: 38px; padding: 8px 12px; white-space: normal; text-align: left; justify-content: flex-start; gap: 10px; line-height: 1.35; background: var(--card); }
+.dir-opt b { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--card-2); font-size: .72rem; }
+.dir-opt.is-on { border-color: var(--accent); background: var(--accent-soft); }
+.dir-opt.is-on b { background: var(--accent); color: #0D1219; }
+/* their steps while they work, and what they ask mid-work */
+.dir-live { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-left: 2px solid var(--accent-line); margin-left: 4px; }
+.dir-live[hidden] { display: none; }
+.dir-live-tool { font: .72rem/1.4 var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.dir-live .dir-live-msg { max-width: 100%; font-size: .8rem; background: transparent; border-style: dashed; }
+.dir-pending { display: flex; flex-direction: column; gap: 10px; }
+.dir-pending:empty { display: none; }
+.dir-pending-title { font-size: .76rem; font-weight: 700; color: var(--amber); }
+.dir-pending .perm-card { -webkit-backdrop-filter: none; backdrop-filter: none; animation: none; }
+.dir-pending .pc-skip { display: none; }
 .dir-pbadge.is-wait { background: var(--amber-soft); color: var(--amber); }
 
 /* performance */
@@ -184,8 +201,10 @@
 .is-phone .dir-convo:has(#dir-hire:not([hidden])) .dir-msgs { display: none; }
 .is-phone .dir-hire-row { grid-template-columns: minmax(0, 1fr); }
 .is-phone .dir-approve { flex-wrap: wrap; padding: 10px 12px; }
-.is-phone .dir-approve span { flex: 1 1 100%; }
-.is-phone .dir-approve .btn { flex: 1 1 0; height: 44px; justify-content: center; }
+.is-phone .dir-approve > span { flex: 1 1 100%; }
+.is-phone .dir-opt { min-height: 46px; font-size: .86rem; }
+.is-phone .dir-approve { max-height: 55%; overflow-y: auto; }
+.is-phone .dir-approve > .btn { flex: 1 1 0; height: 44px; justify-content: center; }
 .is-phone .dir-input { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "mode stop" "text send"; align-items: end; gap: 6px 8px; padding: 8px 10px 10px; }
 .is-phone .dir-input-row { display: contents; }
 .is-phone .dir-mode { grid-area: mode; font-size: .68rem; line-height: 1.35; }

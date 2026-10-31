@@ -133,11 +133,22 @@ async function loadLog(scrollEnd = false) {
     const r = await fetch(`/api/log?id=${encodeURIComponent(id)}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}${TOKEN ? `&k=${encodeURIComponent(TOKEN)}` : ''}`);
     const d = await r.json();
     if (id !== state.selectedId) return;
-    if (agent) { if (agent !== state.subView || tab !== 'subs') return; subItems = d.items || []; renderSubs(scrollEnd); }
-    else { logItems = d.items || []; if (tab === 'chat') renderChat(scrollEnd); }
+    // (nothing new since the last look: leave the page as it is, where you scrolled to)
+    const same = (a, b) => a.length === b.length && a.at(-1)?.ts === b.at(-1)?.ts && (a.at(-1)?.text || '').length === (b.at(-1)?.text || '').length;
+    if (agent) { if (agent !== state.subView || tab !== 'subs') return; if (!scrollEnd && same(subItems, d.items || [])) return; subItems = d.items || []; renderSubs(scrollEnd); }
+    else { if (!scrollEnd && same(logItems, d.items || []) && logId === id) return; logItems = d.items || []; logId = id; if (tab === 'chat') renderChat(scrollEnd); }
   } catch { if (id === state.selectedId && tab === 'chat' && !logItems.length) $('ds-body').replaceChildren(el('p', 'chat-empty', tr('drawer.chatUnreadable'))); }
 }
 export function scheduleLog() { clearTimeout(logTimer); logTimer = setTimeout(() => loadLog(false), 1200); }
+// The conversation keeps itself current while it is open: the office hears of a turn through hooks, and without them
+// (or for what someone said to this person from the director's office, which goes on in a branch) it would only move
+// when something else happened. A look every few seconds, re-drawn only when something changed.
+let logId = null;
+function keepLogCurrent() {
+  if (document.visibilityState !== 'visible' || !state.selectedId || (tab !== 'chat' && tab !== 'subs')) return;
+  const dr = $('dr-session'); if (!dr || dr.hidden) return;
+  loadLog(false);
+}
 /* conversation: a small markdown renderer that only builds DOM nodes (never innerHTML), so a transcript can't inject
    markup. Covers what Claude writes: headings, lists (nested, task boxes), code blocks, tables, quotes, rules, links. */
 const MD_INLINE = /(`[^`\n]+`|\*\*[^*\n]+?\*\*|__[^_\n]+?__|(?<![\w*])\*[^*\s][^*\n]*?\*(?!\w)|\[[^\]\n]+\]\([^)\s]+\)|https?:\/\/[^\s<>()"']+[^\s<>()"'.,;:!?])/;
@@ -366,6 +377,8 @@ export function renderActivity() {
 }
 
 export function setup() {
+  setInterval(keepLogCurrent, 3000);
+  document.addEventListener('visibilitychange', keepLogCurrent);
   state.subView = null;
   drS = $('dr-session'); drM = $('dr-mac');
   $('tab-chat').addEventListener('click', () => { setTab('chat'); loadLog(true); });

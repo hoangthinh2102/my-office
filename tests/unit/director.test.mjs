@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createPerf, kindOf } from '../../server/perf.mjs';
 import { createCompany, DEFAULT_SCHEDULE, permArgs, PERMS } from '../../server/company.mjs';
+import { parseAsk, answerText } from '../../server/asks.mjs';
 import { createAgentSupport } from '../../server/agent-support.mjs';
 
 const GUID = '27fbb8ff-6be1-4899-b8b6-af6d75d44ab8', GUID2 = '11111111-2222-4333-8444-555555555555';
@@ -17,17 +18,21 @@ test('a prompt says what kind of job it is', () => {
   assert.equal(kindOf('sửa giúp lỗi build'), 'chat');
 });
 
-test('permission profiles: dev works alone but never force-pushes, a reviewer only reads', () => {
+test('permission profiles: auto by default like your own sessions; dev works alone but never force-pushes, a reviewer only reads', () => {
+  assert.deepEqual(permArgs('auto').slice(0, 2), ['--permission-mode', 'auto']);
+  assert.ok(!permArgs('auto').includes('--allowedTools'), 'auto mode decides by itself');
+  assert.ok(permArgs('auto').includes('Bash(git push --force:*)'));
+  assert.deepEqual(permArgs(undefined), permArgs('auto'));
+  assert.deepEqual(permArgs('nonsense'), permArgs('auto'));
+  assert.deepEqual(permArgs('ask'), ['--permission-mode', 'default']);
   const dev = permArgs('dev');
-  assert.deepEqual(dev.slice(0, 2), ['--permission-mode', 'acceptEdits']);
+  assert.deepEqual(dev.slice(0, 2), ['--permission-mode', 'auto']);
   assert.ok(dev.includes('Bash(npm:*)') && dev.includes('Edit'));
   assert.ok(dev.indexOf('Bash(git push --force:*)') > dev.indexOf('--disallowedTools'));
   const rev = permArgs('reviewer');
   assert.ok(rev.indexOf('Edit') > rev.indexOf('--disallowedTools'), 'Edit is denied');
   assert.ok(!rev.slice(0, rev.indexOf('--disallowedTools')).includes('Edit'), 'Edit is not allowed');
-  assert.deepEqual(permArgs('ask'), []);
-  assert.deepEqual(permArgs('nonsense'), []);
-  assert.deepEqual(Object.keys(PERMS), ['ask', 'dev', 'qa', 'reviewer']);
+  assert.deepEqual(Object.keys(PERMS), ['auto', 'ask', 'dev', 'qa', 'reviewer']);
 });
 
 test('a role keeps its permission profile and hand-over; budgets and the morning run are cleaned', () => {
@@ -35,7 +40,7 @@ test('a role keeps its permission profile and hand-over; budgets and the morning
   assert.ok(co.setRole('aaaa1111-bbbb', { title: 'Dev', perm: 'dev', next: 'cccc2222-dddd' }));
   assert.deepEqual(co.roleOf('aaaa1111-bbbb'), { title: 'Dev', brief: '', perm: 'dev', next: 'cccc2222-dddd' });
   co.setRole('aaaa1111-bbbb', { title: 'Dev', perm: 'root', next: 'aaaa1111-bbbb' });   // unknown profile, handing over to itself
-  assert.equal(co.roleOf('aaaa1111-bbbb').perm, 'ask'); assert.equal(co.roleOf('aaaa1111-bbbb').next, '');
+  assert.equal(co.roleOf('aaaa1111-bbbb').perm, 'auto'); assert.equal(co.roleOf('aaaa1111-bbbb').next, '');
   co.set({ budget: { personDay: '250000.7', projectDay: -5, stop: 1 }, auto: { on: true, at: '25:00', prompt: '  ', perm: 'reviewer' } });
   assert.deepEqual(co.get().budget, { personDay: 250001, projectDay: 0, stop: true });
   assert.equal(co.get().auto.at, ''); assert.equal(co.get().auto.prompt, '/daily-tasks'); assert.equal(co.get().auto.perm, 'reviewer');
@@ -108,4 +113,31 @@ test('the board scores what was delivered, ties jobs to Lark tasks and counts re
   // a job still running counts towards the budget as it goes
   perf.begin(dev, { prompt: 'x', usage: { in: 1500, cr: 0, out: 150, cost: 1.5 } });
   assert.equal(perf.live(dev, { in: 2500, cr: 200, out: 250 }), 800 + 100);
+});
+
+test('a reply that stops for the director: markers, options a skill writes itself, and plain answers', () => {
+  let r = parseAsk('Phase 1 done: 3 files read.\n\nPlan: change the API first.\n[[office:approve]]');
+  assert.deepEqual(r.ask, { kind: 'approve' }); assert.ok(!r.text.includes('[[office'));
+  r = parseAsk('Two ways:\n[[office:choose| Keep the old table | **Migrate** now |]]');
+  assert.deepEqual(r.ask, { kind: 'choose', options: ['Keep the old table', 'Migrate now'], multi: false });
+  assert.equal(parseAsk('x [[office:choose-many|a|b|c]]').ask.multi, true);
+  assert.deepEqual(parseAsk('x [[office:choose|only one]]').ask, { kind: 'approve' });
+  // no marker: a numbered list right above the question
+  r = parseAsk('Tìm thấy 2 hướng.\n\n1. Sửa ở BE\n2. Sửa ở FE\n\nBạn muốn chọn hướng nào?');
+  assert.deepEqual(r.ask, { kind: 'choose', options: ['Sửa ở BE', 'Sửa ở FE'], multi: false });
+  r = parseAsk('Which one?\nA) keep\nB) drop\nC) **rename**');
+  assert.deepEqual(r.ask.options, ['keep', 'drop', 'rename']);
+  assert.deepEqual(parseAsk('Đã review xong, không có lỗi. Duyệt để mình push và tạo MR nhé?').ask, { kind: 'approve' });
+  assert.deepEqual(parseAsk('Should I attach the docs and post this?').ask, { kind: 'approve' });
+  assert.equal(parseAsk('Xong rồi. Đã push nhánh feat/x và tạo MR !12.').ask, null);
+  assert.equal(parseAsk('Why did it fail? Because the token expired.\n\nFixed it, tests pass.\nCommitted.\nPushed.\nMR updated.\nLark commented.\nPipeline green.\nDone.').ask, null);
+  assert.equal(parseAsk('```js\nif (a?) {}\n```\nDone.').ask, null);
+});
+
+test("the director's answer, in words the agent reads", () => {
+  const t = (k, v = {}) => `${k}${Object.keys(v).length ? JSON.stringify(v) : ''}`;
+  const ask = { kind: 'choose', options: ['A', 'B', 'C'], multi: true };
+  assert.equal(answerText(ask, { ok: true, pick: [0, 2] }, t), 'director.ask.choseMsg{"chosen":"A + C"}');
+  assert.equal(answerText({ kind: 'approve' }, { ok: true, note: 'nhớ chạy test' }, t), 'director.ask.goMsg\n\ndirector.ask.noteFrom{"note":"nhớ chạy test"}');
+  assert.equal(answerText({ kind: 'approve' }, { ok: false, note: 'đổi tên hàm' }, t), 'director.ask.reviseMsg{"note":"đổi tên hàm"}');
 });

@@ -20,6 +20,7 @@ import { standBy, wayTo } from '../people/navigation.js';
 import { mdBlocks } from './session-drawer.js';
 import { toast, fmtTok, fmtUsd } from './activity.js';
 import { icon } from './icons.js';
+import { perms, permCard, permClick, permWatch, renderPerms, setShownElsewhere } from './permissions.js';
 import { t as tr, num, locale } from '../../i18n/index.js';
 
 const T = (k, v) => tr(`director.${k}`, v);
@@ -28,10 +29,13 @@ const getJ = (p) => fetch(api(p), { cache: 'no-store' }).then((r) => r.json()).c
 const postJ = (p, body) => fetch(api(p), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json()).catch(() => ({ ok: false }));
 
 let history = [];   // what the selected person did before (their own conversation), shown above your messages
+let live = [];      // the work going on now, step by step (while they work on what you sent)
+let picks = new Set();   // options ticked on a report that lets you pick several
+let jumpEnd = true;      // a conversation just opened: show its end (later updates keep where you scrolled to)
 let modal, tab = 'talk', co = null, sel = null, thread = null, hiring = false, perfDays = 7, perfData = null, unread = 0, perfT = null, forceArmed = false;
-const PERM_KEYS = ['ask', 'dev', 'qa', 'reviewer'];
+const PERM_KEYS = ['auto', 'ask', 'dev', 'qa', 'reviewer'];
 // a <select> of permission profiles, and one of the people to hand finished work to
-function permSelect(sel, value = 'ask') { sel.replaceChildren(...(co?.perms || PERM_KEYS).map((k) => { const o = el('option', null, T(`perm.${k}`)); o.value = k; o.title = T(`perm.${k}Hint`); return o; })); sel.value = value || 'ask'; sel.title = T(`perm.${sel.value}Hint`); return sel; }
+function permSelect(sel, value = 'auto') { sel.replaceChildren(...(co?.perms || PERM_KEYS).map((k) => { const o = el('option', null, T(`perm.${k}`)); o.value = k; o.title = T(`perm.${k}Hint`); return o; })); sel.value = value || 'auto'; sel.title = T(`perm.${sel.value}Hint`); return sel; }
 function nextSelect(sel, value = '', not = '') {
   const people = [...(co?.people || []).map((p) => ({ sid: p.sid, name: p.role?.title ? `${p.name} · ${p.role.title}` : p.name })),
     ...(co?.dms || []).filter((d) => d.sid && !(co?.people || []).some((p) => p.sid === d.sid)).map((d) => ({ sid: d.sid, name: d.role?.title ? `${d.name} · ${d.role.title}` : d.name }))].filter((x) => x.sid !== not);
@@ -48,7 +52,7 @@ export async function openDirector(which = tab) {
   showTab(which);
   await loadCompany();
 }
-function close() { modal.hidden = true; $('btn-director')?.setAttribute('aria-pressed', 'false'); fitKeyboard(); }
+function close() { modal.hidden = true; $('btn-director')?.setAttribute('aria-pressed', 'false'); fitKeyboard(); renderPerms(); }
 // on a phone the people list and a conversation take turns on the screen (director.css)
 function showConvo(on) { modal.querySelector('.dir-talk')?.classList.toggle('is-convo', on); }
 function back() { hiring = false; $('dir-hire').hidden = true; showConvo(false); }
@@ -64,6 +68,7 @@ function showTab(which) {
   tab = which;
   for (const b of modal.querySelectorAll('.dir-tab')) b.classList.toggle('is-sel', b.dataset.tab === which);
   for (const p of modal.querySelectorAll('.dir-pane')) p.hidden = p.dataset.pane !== which;
+  renderPerms();
   if (which === 'perf') loadPerf();
   if (which === 'rules') renderRules();
   if (which === 'hours') renderHours();
@@ -127,10 +132,10 @@ const personOf = (key) => co?.people?.find((p) => p.sid === key) || null;
 
 /* ---------- one conversation ---------- */
 async function select(key) {
-  sel = key; hiring = false; $('dir-hire').hidden = true; showConvo(true);
+  sel = key; hiring = false; $('dir-hire').hidden = true; showConvo(true); live = []; picks = new Set(); jumpEnd = true;
   for (const b of $('dir-plist').querySelectorAll('.dir-person')) b.classList.toggle('is-sel', b.dataset.key === key);
   thread = (co?.dms || []).find((d) => d.key === key) || null; history = [];
-  renderThread();
+  renderThread(); renderPerms();
   await loadThread(key);
 }
 async function loadThread(key) {
@@ -139,20 +144,20 @@ async function loadThread(key) {
   if (sel !== key) return;
   thread = j?.ok ? j.d : null;
   history = h?.items || [];
-  renderThread();
+  renderThread(); renderPerms(); jumpEnd = false;
 }
-// their earlier work, folded: what they were asked, what they answered, how many steps in between
-function historyNode() {
-  const box = el('details', 'dir-hist'); box.open = !thread?.msgs?.length;
-  const asks = history.filter((x) => x.role === 'user').length;
-  box.append(el('summary', null, T('history.title', { n: asks })));
-  for (const it of history) {
-    if (it.role === 'tools') { box.append(el('div', 'dir-hist-tools', T('history.tools', { n: it.n }))); continue; }
-    const b = el('div', `dir-msg dir-hist-msg${it.role === 'user' ? ' is-me' : ''}`);
-    if (it.role === 'user') b.append(el('span', 'dir-tag', T('history.you')), document.createTextNode(it.text)); else b.append(mdBlocks(it.text));
-    box.append(b);
-  }
-  return box;
+// their own conversation (the editor, a terminal): what they were asked there, what they answered, the steps between
+function histNode(it) {
+  if (it.role === 'tools') return el('div', 'dir-hist-tools', T('history.tools', { n: it.n }));
+  const b = el('div', `dir-msg dir-hist-msg${it.role === 'user' ? ' is-me' : ''}`);
+  if (it.role === 'user') b.append(el('span', 'dir-tag', T('history.you')), document.createTextNode(it.text)); else b.append(mdBlocks(it.text));
+  if (it.ts) { const d = new Date(it.ts), meta = el('div', 'dir-meta'); meta.append(el('span', null, `${pad2(d.getHours())}:${pad2(d.getMinutes())}`), el('span', null, T('history.where'))); b.append(meta); }
+  return b;
+}
+// one timeline: their own conversation and what was said here, in the order it happened
+function timeline(msgs) {
+  const rows = [...history.map((it, i) => ({ at: it.ts || 0, i, node: () => histNode(it) })), ...msgs.map((m, i) => ({ at: m.at || 0, i: 1e6 + i, node: () => msgNode(m) }))];
+  return rows.sort((a, b) => a.at - b.at || a.i - b.i).map((r) => r.node());
 }
 function backBtn() {   // (only shown on a phone)
   const b = el('button', 'dir-back'); b.type = 'button'; b.setAttribute('aria-label', T('back')); b.title = T('back');
@@ -216,7 +221,7 @@ function renderThread() {
   const can = !!(hiring || sel);
   text.disabled = send.disabled = !can || !!thread?.running;
   $('dir-stop').hidden = !thread?.running;
-  $('dir-approve').hidden = hiring || !thread?.awaiting || !!thread?.running;
+  renderAsk();
   if (hiring) {
     box.replaceChildren(el('p', 'dir-empty', T('hire.note')));
     $('dir-mode').textContent = T('modeHint.hire');
@@ -224,10 +229,13 @@ function renderThread() {
   }
   if (!sel) { box.replaceChildren(el('p', 'dir-empty', T('pick'))); $('dir-mode').textContent = ''; return; }
   const msgs = thread?.msgs || [];
-  box.replaceChildren(...(history.length ? [historyNode()] : []),
-    ...(msgs.length ? msgs.map(msgNode) : [el('p', history.length ? 'dir-note dir-hist-hint' : 'dir-empty', T(history.length ? 'history.hint' : 'first', { name: personOf(sel)?.name || thread?.name || '' }))]));
-  if (thread?.running) box.append(el('div', 'dir-typing', T('typing', { name: personOf(sel)?.name || thread?.name || '' })));
-  box.scrollTop = box.scrollHeight;
+  const keep = !jumpEnd && !nearEnd() ? box.scrollTop : null;   // (reading further up: stay there while it updates)
+  box.replaceChildren(...timeline(msgs),
+    ...(msgs.length ? [] : [el('p', history.length ? 'dir-note dir-hist-hint' : 'dir-empty', T(history.length ? 'history.hint' : 'first', { name: personOf(sel)?.name || thread?.name || '' }))]));
+  if (thread?.running) box.append(liveNode(), el('div', 'dir-typing', T('typing', { name: personOf(sel)?.name || thread?.name || '' })));
+  box.append(el('div', 'dir-pending'));
+  renderPending();
+  box.scrollTop = keep ?? box.scrollHeight;
   const p = personOf(sel);
   $('dir-mode').textContent = thread?.branch ? T('modeHint.branch') : p?.editor ? T('modeHint.willBranch') : T('modeHint.direct');
 }
@@ -263,7 +271,7 @@ function startHire() {
   const ws = co?.workspace ? [Object.assign(el('option', null, T('hire.workspace', { root: co.workspace.root, n: co.workspace.repos.length })), { value: '@workspace', title: co.workspace.repos.join(', ') })] : [];
   pick.replaceChildren(...ws, ...(co?.projects || []).map((p) => { const o = el('option', null, `${p.name} — ${p.dir}`); o.value = p.dir; return o; }));
   if (!pick.options.length) { const o = el('option', null, T('hire.noProjects')); o.value = ''; pick.append(o); }
-  permSelect($('dir-hire-perm'), 'dev'); nextSelect($('dir-hire-next'));
+  permSelect($('dir-hire-perm'), 'auto'); nextSelect($('dir-hire-next'));
   $('dir-hire').hidden = false; showConvo(true);
   renderThread();
   $('dir-hire-title').focus();
@@ -365,19 +373,99 @@ function csv() {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-/* ---------- a plan waiting for you (the morning run): approve it and work starts, or send it back with a note ---------- */
-async function approve(ok) {
+/* ---------- a report waiting for you: they stopped to ask (a phase to approve, a choice; the morning plan too) ----------
+   Approve is one press (what you typed below goes with it as a note); to change something, type it and press "Ask for
+   changes"; a choice is one press on the option (several: tick them, then send). Writing a message of your own answers
+   it too. */
+function renderAsk() {
+  const bar = $('dir-approve'), ask = thread?.ask, on = !hiring && !!thread?.awaiting && !thread?.running;
+  bar.hidden = !on;
+  $('dir-text').placeholder = on ? T('ask.notePh') : T('inputPh');
+  if (!on) return;
+  const gate = !!thread.gate, choose = ask?.kind === 'choose' && ask.options?.length;
+  $('dir-approve-text').textContent = choose ? T(ask.multi ? 'ask.barMany' : 'ask.barChoose') : gate ? T('approve.bar') : ask?.open ? T('ask.barOpen') : T('ask.bar');
+  const ok = $('dir-approve-ok'), no = $('dir-approve-no'), opts = $('dir-opts');
+  no.textContent = gate ? T('approve.revise') : T('ask.revise');
+  ok.textContent = choose ? T('ask.send') : gate ? T('approve.ok') : ask?.open ? T('ask.agree') : T('ask.approve');
+  ok.hidden = !!choose && !ask.multi;
+  opts.replaceChildren(...(choose ? ask.options.map((o, i) => {
+    const b = el('button', `btn dir-opt${picks.has(i) ? ' is-on' : ''}`); b.type = 'button'; b.dataset.i = i;
+    b.append(el('b', null, `${i + 1}`), document.createTextNode(o));
+    b.addEventListener('click', () => {
+      if (!ask.multi) { approve(true, [i]); return; }
+      if (picks.has(i)) picks.delete(i); else picks.add(i);
+      b.classList.toggle('is-on', picks.has(i));
+    });
+    return b;
+  }) : []));
+  opts.hidden = !choose;
+}
+async function approve(ok, pick = null) {
   if (!thread?.key) return;
-  const note = $('dir-text').value.trim();
-  if (!ok && !note) { toast(T('approve.needNote')); $('dir-text').focus(); return; }
+  const note = $('dir-text').value.trim(), ask = thread.ask || {};
+  if (ok && ask.kind === 'choose' && ask.multi && !pick) { pick = [...picks]; if (!pick.length) { toast(T('ask.needPick')); return; } }
+  if (!ok && !note) { toast(T(thread.gate ? 'approve.needNote' : 'ask.needNote')); $('dir-text').focus(); return; }
   if (DEMO) { toast(T('demo')); return; }
-  for (const id of ['dir-approve-ok', 'dir-approve-no']) $(id).disabled = true;
-  const r = await postJ('/api/dm/approve', { key: thread.key, ok, note });
-  for (const id of ['dir-approve-ok', 'dir-approve-no']) $(id).disabled = false;
+  const btns = [...$('dir-approve').querySelectorAll('button')];
+  for (const b of btns) b.disabled = true;
+  const r = await postJ('/api/dm/approve', { key: thread.key, ok, note, pick: pick || [] });
+  for (const b of btns) b.disabled = false;
   if (!r.ok) { toast(r.message || T('failed')); return; }
-  $('dir-text').value = '';
-  toast(T(ok ? 'approve.done' : 'approve.sentBack'));
+  $('dir-text').value = ''; picks = new Set();
+  toast(pick?.length ? T('ask.chose') : thread.gate ? T(ok ? 'approve.done' : 'approve.sentBack') : T(ok ? 'ask.done' : 'ask.sentBack'));
   await loadCompany();
+  await loadThread(thread.key);
+}
+// what they ask in the middle of the work (Claude's questions, a plan, a command to allow): the same cards as over the
+// office, inside this conversation; the office's stack leaves them to this window while it shows them
+function renderPending() {
+  const box = $('dir-msgs')?.querySelector('.dir-pending'); if (!box) return;
+  const mine = thread ? [...perms.values()].filter((p) => p.dm && p.dm === thread.key) : [];
+  const have = new Set([...box.querySelectorAll('.perm-card')].map((c) => c.dataset.id));
+  if (mine.length === have.size && mine.every((p) => have.has(p.id))) return;
+  const near = nearEnd();
+  box.replaceChildren(...(mine.length ? [el('div', 'dir-pending-title', T('ask.pending')), ...mine.map(permCard)] : []));
+  if (near) $('dir-msgs').scrollTop = $('dir-msgs').scrollHeight;
+}
+const nearEnd = () => { const m = $('dir-msgs'); return !m || m.scrollHeight - m.scrollTop - m.clientHeight < 120; };
+// their steps while they work: what they say and the tools they use, newest last
+function liveNode() {
+  const box = el('div', 'dir-live'); box.id = 'dir-live';
+  for (const it of live.slice(-14)) {
+    if (it.role === 'tool') box.append(el('div', 'dir-live-tool', `🔧 ${it.text}`));
+    else { const b = el('div', 'dir-msg dir-live-msg'); b.append(mdBlocks(it.text)); box.append(b); }
+  }
+  box.hidden = !live.length;
+  return box;
+}
+const sig = (items) => `${items.length}:${items.at(-1)?.ts || ''}:${(items.at(-1)?.text || '').length}`;
+async function loadLive() {
+  const key = thread?.key; if (!key || DEMO) return;
+  const j = await getJ(`/api/dm/live?key=${encodeURIComponent(key)}`);
+  if (!j || thread?.key !== key || sig(j.items || []) === sig(live)) return;
+  live = j.items || [];
+  const old = $('dir-live'); if (!old) return;
+  const near = nearEnd(); old.replaceWith(liveNode());
+  if (near) $('dir-msgs').scrollTop = $('dir-msgs').scrollHeight;
+}
+/* While a conversation is open: keep it current even when the office's live stream misses something (a phone on a
+   tunnel, a sleeping tab): the thread, their steps while they work, and their own conversation (the editor). */
+let tickN = 0;
+async function refresh() {
+  if (!isOpen() || tab !== 'talk' || hiring || !sel || DEMO || document.visibilityState !== 'visible') return;
+  tickN++;
+  const key = sel, j = await getJ(`/api/dm?key=${encodeURIComponent(key)}`);
+  if (sel !== key) return;
+  if (j?.ok) {
+    const was = thread, d = j.d;
+    const moved = !was || was.msgs?.length !== d.msgs.length || was.msgs?.at(-1)?.id !== d.msgs.at(-1)?.id || !!was.running !== !!d.running || !!was.awaiting !== !!d.awaiting;
+    if (moved) { if (!d.running) live = []; thread = d; renderThread(); renderPeople(); }
+    if (d.running) { await loadLive(); return; }
+  }
+  if (tickN % 2 === 0) {   // (their own conversation moved on: in the editor, a terminal)
+    const h = await getJ(`/api/dm/history?key=${encodeURIComponent(key)}`);
+    if (sel === key && h?.items && sig(h.items) !== sig(history)) { history = h.items; renderThread(); }
+  }
 }
 
 /* ---------- automation: budgets and the morning run ---------- */
@@ -480,7 +568,7 @@ export function onDirectorMsg(d) {
     if (!thread) loadThread(sel); else renderThread();
   }
   if (isOpen()) { if (d.was) loadCompany(); else renderPeople(); }
-  if (d.m?.from === 'agent' && (!isOpen() || sel !== d.d.key)) { unread++; badge(); toast(T(d.d.awaiting ? 'approve.toast' : 'replied', { name: d.d.name }), d.d.awaiting ? 9000 : 3400); }
+  if (d.m?.from === 'agent' && (!isOpen() || sel !== d.d.key)) { unread++; badge(); toast(T(d.d.awaiting ? (d.d.gate ? 'approve.toast' : 'ask.pushTitle') : 'replied', { name: d.d.name }), d.d.awaiting ? 9000 : 3400); }
 }
 export function onSnapSchedule(s) { if (s) setSchedule(s); }
 
@@ -504,6 +592,12 @@ export function setup() {
   $('dir-hours-reset').addEventListener('click', () => renderHours({ ...DEFAULT_SCHEDULE }));
   $('dir-auto-save').addEventListener('click', saveAuto);
   $('dir-approve-ok').addEventListener('click', () => approve(true));
+  $('dir-msgs').addEventListener('click', (e) => { if (e.target.closest('.dir-pending')) permClick(e); });
+  setShownElsewhere((p) => isOpen() && tab === 'talk' && !!thread && !!p.dm && p.dm === thread.key);
+  permWatch.add(() => { if (isOpen() && thread) renderPending(); });
+  setInterval(() => { refresh().catch(() => {}); }, 2500);
+  document.addEventListener('visibilitychange', () => { tickN = 1; refresh().catch(() => {}); });   // (back to the page, a phone unlocked: catch up at once)
+  setInterval(() => { for (const c of modal.querySelectorAll('.dir-pending .perm-card')) c._tick?.(); }, 1000);
   $('dir-approve-no').addEventListener('click', () => approve(false));
   $('dir-text').addEventListener('input', () => { if (forceArmed) { forceArmed = false; $('dir-send').lastChild.textContent = T('send'); } });
   if (new URLSearchParams(location.search).has('director')) setTimeout(() => openDirector(), 600);
