@@ -227,6 +227,7 @@ const sidToKey = new Map();
 // One conversation is one person. Branches the office made of someone's conversation before (data/dm.json "branch")
 // are that same person: branch id -> the person's own id. rootOf(sid) is who a conversation id belongs to.
 const branchRoot = new Map();
+const STAY_MS = 20 * 60e3;   // how long someone the office gave work to stays after answering
 const rootOf = (sid) => (sid && branchRoot.get(sid)) || sid;
 let feed = [];
 let seq = 0;
@@ -957,13 +958,24 @@ async function doScan() {
     if (s.name !== name || s.cwd !== j.cwd || s.link !== link) { s.name = name; s.cwd = j.cwd || ''; s.link = link; changed = true; noteDir(s.cwd); }
     s.pid = j.pid; s.fromFile = true; s.busy = j.status === 'busy'; s.entry = j.entrypoint || '';
     // Claude's own session file says busy: trust it even if we missed the hook (e.g. the server restarted mid-turn).
+    // A run the office started for someone (the director's office) is work from its first second.
+    if (j.entrypoint === 'sdk-cli' && officeRun(j.sessionId)) s.busy = true;
     if (s.busy && s.status === 'rest') { s.status = 'work'; if (!s.taskStart) s.taskStart = j.statusUpdatedAt || Date.now(); s.lastEventAt = Math.max(s.lastEventAt, Date.now()); changed = true; }
     if (changed) broadcast({ k: 'sess', s: pub(s) });
     if (!s.lastPrompt && !s.recalled && s.sid && s.cwd) { s.recalled = true; recallTask(s); }
     if (s.sid && s.cwd && !s.titleAt) { refreshTitle(s, true); originOf(s).then((o) => { if (o && o !== s.origin) { s.origin = o; broadcast({ k: 'sess', s: pub(s) }); } }); }
   }
   for (const [key, s] of sessions) {
-    if (s.fromFile && !live.has(key) && !(s.parked && Date.now() - s.parked.at < PARK_MS)) dropSession(key, s);   // (a moved one waits at its desk)
+    if (!s.fromFile || live.has(key) || (s.parked && Date.now() - s.parked.at < PARK_MS)) continue;   // (a moved one waits at its desk)
+    // Someone the office gave work to stays a while after answering, at their desk, instead of vanishing the second the
+    // run ends: your next message finds the same person there (the next run takes this place over by its id).
+    if (s.entry === 'sdk-cli' && s.sid) {
+      s.fromFile = false; s.pid = null; s.busy = false; s.stayUntil = Date.now() + STAY_MS; s.lastEventAt = Date.now();
+      if (s.status !== 'rest') { s.status = 'rest'; s.doneAt = Date.now(); }
+      broadcast({ k: 'sess', s: pub(s) });
+      continue;
+    }
+    dropSession(key, s);
   }
 }
 // The chat's title as the IDE shows it: your rename (`custom-title`) wins over the generated one (`ai-title`). Both are
@@ -1024,7 +1036,7 @@ setInterval(() => {
     if (s.status === 'work' && !s.busy && (!s.inTool || s.fromFile || now - s.lastEventAt > 600_000) && now - s.lastEventAt > 20_000) { s.status = 'rest'; s.inTool = false; broadcast({ k: 'sess', s: pub(s) }); }
     if (s.bg?.size && now - (s.bgAt || 0) > 10_000) { s.bgAt = now; pruneBackground(s).then((ch) => { if (ch) broadcast({ k: 'sess', s: pub(s) }); }); }
     // Sessions seen only through hooks (no session file) leave after 10 quiet minutes.
-    if (!s.fromFile && now - s.lastEventAt > 600_000) dropSession(key, s);
+    if (!s.fromFile && now - s.lastEventAt > 600_000 && !(s.stayUntil > now)) dropSession(key, s);
     // A subagent that went quiet is finished: 90 s once its session rests, 5 min while the session still works.
     for (const [id, sub] of Object.entries(s.subs)) if (now - sub.seenAt > (s.status === 'rest' ? 90_000 : 300_000)) { finishSub(s, id, now); broadcast({ k: 'sess', s: pub(s) }); }
   }
