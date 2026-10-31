@@ -23,7 +23,7 @@ export default {
     day: 'Daytime',
     night: 'Night',
   },
-  neon: { name: 'SHIP IT sign', hint: 'Flick it on and off for fun' },
+  neon: { name: 'GAMOTA sign', hint: 'Flick it on and off for fun' },
   sofa: { name: 'Sofa', hint: 'Call the cat up for a nap' },
   trophies: { name: 'Trophy cabinet', hint: 'Trophies for your milestones · click to see them' },
   director: { name: "Director's office", hint: 'The director (you) carries prompts to desks and takes reports when work is done · trophy shelf' },

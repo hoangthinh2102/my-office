@@ -22,7 +22,7 @@ export default {
     day: 'Ban ngày',
     night: 'Ban đêm',
   },
-  neon: { name: 'Biển SHIP IT', hint: 'Bật tắt cho vui' },
+  neon: { name: 'Biển GAMOTA', hint: 'Bật tắt cho vui' },
   sofa: { name: 'Sofa', hint: 'Gọi mèo lên ngủ trưa' },
   trophies: { name: 'Tủ cúp', hint: 'Cúp các mốc làm việc của bạn · bấm để xem' },
   director: { name: 'Phòng Giám đốc', hint: 'Giám đốc (là bạn) mang việc tới bàn, nhận báo cáo khi xong · kệ cúp các mốc' },
