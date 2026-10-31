@@ -141,3 +141,26 @@ test("the director's answer, in words the agent reads", () => {
   assert.equal(answerText({ kind: 'approve' }, { ok: true, note: 'nhớ chạy test' }, t), 'director.ask.goMsg\n\ndirector.ask.noteFrom{"note":"nhớ chạy test"}');
   assert.equal(answerText({ kind: 'approve' }, { ok: false, note: 'đổi tên hàm' }, t), 'director.ask.reviseMsg{"note":"đổi tên hàm"}');
 });
+
+test('recent conversations: folder, title (rename first), newest first, only real conversations', async () => {
+  const { createRecent } = await import('../../server/recent.mjs');
+  const cl = tmp('office-claude-'), work = fs.mkdtempSync(path.join(os.homedir(), '.office-test-work-')), proj = path.join(cl, 'projects', 'p');
+  fs.mkdirSync(proj, { recursive: true });
+  const line = (o) => JSON.stringify(o) + '\n';
+  const a = '11111111-1111-4111-8111-111111111111', b = '22222222-2222-4222-8222-222222222222';
+  fs.writeFileSync(path.join(proj, `${a}.jsonl`), line({ type: 'user', cwd: work, message: { content: '<command-name>/x</command-name>' } }) + line({ type: 'user', cwd: work, message: { content: 'sửa lỗi đăng nhập' } }));
+  fs.writeFileSync(path.join(proj, `${b}.jsonl`), line({ type: 'user', cwd: work, message: { content: 'hi' } }) + line({ type: 'ai-title', aiTitle: 'Generated' }) + line({ type: 'custom-title', customTitle: 'Renamed' }));
+  fs.writeFileSync(path.join(proj, 'agent-x.jsonl'), line({ type: 'user', cwd: work, message: { content: 'sub' } }));
+  fs.writeFileSync(path.join(proj, '33333333-3333-4333-8333-333333333333.jsonl'), line({ type: 'user', cwd: '/nope/gone', message: { content: 'old' } }));
+  const t = Date.now() / 1000; fs.utimesSync(path.join(proj, `${a}.jsonl`), t - 60, t - 60);
+  const r = createRecent({ claudeDir: cl });
+  const l = await r.list();
+  assert.deepEqual(l.map((x) => [x.sid, x.title, x.cwd]), [[b, 'Renamed', work], [a, 'sửa lỗi đăng nhập', work]]);
+  assert.equal(r.get(a).transcript, path.join(proj, `${a}.jsonl`));
+  assert.equal(r.get('nope'), null);
+  // a conversation in a temporary folder is left out
+  const scratch = tmp('office-scratch-'), c = '44444444-4444-4444-8444-444444444444';
+  fs.writeFileSync(path.join(proj, `${c}.jsonl`), line({ type: 'user', cwd: scratch, message: { content: 'scratch' } }));
+  assert.equal((await createRecent({ claudeDir: cl }).list()).some((x) => x.sid === c), false);
+  fs.rmSync(work, { recursive: true, force: true });
+});

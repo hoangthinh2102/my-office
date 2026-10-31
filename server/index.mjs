@@ -29,6 +29,7 @@ import { createPrefs } from './prefs.mjs';
 import { createCompany, minutes, PERMS, permArgs, DEFAULT_PERM } from './company.mjs';
 import { ASK_PROTOCOL, parseAsk, answerText } from './asks.mjs';
 import { createAgentSupport } from './agent-support.mjs';
+import { createRecent } from './recent.mjs';
 import { createPerf } from './perf.mjs';
 import { pickLang, createT } from '../src/i18n/index.js';
 
@@ -679,6 +680,8 @@ setInterval(() => { try { checkBudgets(); } catch (err) { console.error('budget'
    office like any session and keeps that role. A person with someone to hand over to (role.next) passes finished work
    on (Dev → Reviewer → QA), up to four hand-overs from one message of yours. */
 const DM_FILE = path.join(DATA_DIR, 'dm.json');
+// every conversation of the last two weeks, open or not: anyone can be messaged without reopening them (server/recent.mjs)
+const recent = createRecent({ claudeDir: CLAUDE_DIR });
 let dms = {};
 try { dms = JSON.parse(fs.readFileSync(DM_FILE, 'utf8')) || {}; for (const d of Object.values(dms)) d.running = false; } catch { /* none yet */ }
 let dmSaveT = null;
@@ -717,7 +720,9 @@ function dmSend(b) {
   } else {
     const sid = String(b?.sid || '');
     const s = [...sessions.values()].find((x) => x.sid === sid);
-    d = dms[sid] || (s?.cwd ? (dms[sid] = { key: sid, sid, name: s.title || s.name, dir: s.cwd, msgs: [], at: Date.now() }) : null);
+    const old = s ? null : recent.get(sid);   // (a conversation nobody has open: carried straight on)
+    d = dms[sid] || (s?.cwd ? (dms[sid] = { key: sid, sid, name: s.title || s.name, dir: s.cwd, msgs: [], at: Date.now() })
+      : old ? (dms[sid] = { key: sid, sid, name: recentName(old), dir: old.cwd, msgs: [], at: Date.now() }) : null);
     if (!d) return { ok: false, code: 'noDir' };
     if (s && !company.roleOf(sid)?.title) d.name = s.title || s.name || d.name;   // (someone you hired keeps the name you gave)
     if (d.running) return { ok: false, code: 'busy' };
@@ -803,6 +808,13 @@ function handOver(d, t, result) {
   if (r.ok && fromS && s) broadcast({ k: 'handoff', from: fromS.id, to: s.id });   // (in the office: the file carried over to their desk)
 }
 const dmList = () => Object.values(dms).sort((a, b) => (b.at || 0) - (a.at || 0)).map((d) => ({ ...dmPub(d, 1) }));
+const recentName = (x) => clip(redact(oneLine(x.title || '')), 80) || path.basename(x.cwd);
+// the conversations that are neither in the office now nor already talked to here (nor a branch the office made)
+async function recentOut() {
+  const here = new Set([...sessions.values()].map((s) => s.sid).filter(Boolean)), branches = new Set(Object.values(dms).map((d) => d.branch).filter(Boolean));
+  return (await recent.list()).filter((x) => !here.has(x.sid) && !dms[x.sid] && !branches.has(x.sid))
+    .map((x) => ({ sid: x.sid, name: recentName(x), dir: tilde(x.cwd), at: x.at, role: company.roleOf(x.sid) || null }));
+}
 
 /* ---------- the morning: at the start of work (or the time you set), on a working day, the office gives the day's
    first job (/daily-tasks by default) to a new hire for the whole workspace. Once a day, only within two hours of that
@@ -2410,7 +2422,7 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/chat') { json(res, 200, chatOut()); return; }
   if (url.pathname === '/api/tasks') { json(res, 200, tasksOut(isLoopback(req))); return; }
   if (url.pathname === '/api/company') {   // the director's office: the company, the people, the skills everyone loads, the conversations
-    company.skills().then((skills) => json(res, 200, { ok: true, ...company.pub(), skills, hook: rulesHookOn(), local: isLoopback(req),
+    Promise.all([company.skills(), recentOut()]).then(([skills, older]) => json(res, 200, { ok: true, ...company.pub(), skills, hook: rulesHookOn(), local: isLoopback(req), recent: older,
       people: [...sessions.values()].filter((s) => s.sid).map((s) => ({ id: s.id, sid: s.sid, name: s.title || s.name, dir: tilde(s.cwd), status: s.status, role: company.roleOf(s.sid), editor: openElsewhere(s) })),
       projects: knownDirs.filter((d) => fs.existsSync(d)).map((d) => ({ dir: tilde(d), name: path.basename(d) })), dms: dmList(),
       workspace: (() => { const w = agentSupport.workspace(); return w ? { root: tilde(w.root), repos: w.repos.map((x) => x.name) } : null; })(),
@@ -2419,7 +2431,7 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/api/dm/history') {   // this person's own conversation (the editor, a terminal), before and after you wrote to them here
     const key = String(url.searchParams.get('key') || ''), d = dms[key], s = [...sessions.values()].find((x) => x.sid === key);
-    const who = s || (d?.sid && d.dir ? { sid: d.sid, cwd: d.dir } : null);
+    const old = recent.get(key), who = s || (d?.sid && d.dir ? { sid: d.sid, cwd: d.dir, transcript: old?.transcript } : old ? { sid: old.sid, cwd: old.cwd, transcript: old.transcript } : null);
     if (!who) { json(res, 200, { items: [] }); return; }
     // what is already in the director's conversation (what you sent, their answers) isn't shown twice
     const norm = (t) => String(t || '').replace(/\[\[office:[^\]]*\]\]/g, '').replace(/\s+/g, ' ').trim().slice(0, 160);

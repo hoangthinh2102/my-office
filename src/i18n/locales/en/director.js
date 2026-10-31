@@ -19,7 +19,7 @@ export default {
   working: 'working',
   talked: 'talked',
   noPeople: 'Nobody here yet. Open Claude Code in a project, or "Hire".',
-  group: { here: 'In the office', past: 'Worked here before' },
+  group: { here: 'In the office', past: 'Worked here before', recent: 'Recent conversations (14 days)' },
   roleTitlePh: 'Job title (e.g. Backend dev)',
   roleBriefPh: 'What this person is responsible for',
   roleSaved: 'Role saved. It applies from the next message.',

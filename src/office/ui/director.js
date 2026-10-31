@@ -125,10 +125,23 @@ function renderPeople() {
     rows.push(el('div', 'dir-pgroup', T('group.past')));
     for (const d of past) rows.push(personRow({ key: d.key, name: d.name, sub: d.role?.title || d.dir, running: d.running, awaiting: d.awaiting }));
   }
+  // every other conversation of the last two weeks: message them and they carry on, no editor needed
+  const older = (co.recent || []).filter((x) => !here.has(x.sid) && !(co.dms || []).some((d) => d.key === x.sid));
+  if (older.length) {
+    rows.push(el('div', 'dir-pgroup', T('group.recent')));
+    for (const x of older) rows.push(personRow({ key: x.sid, name: x.name, sub: `${x.role?.title || x.dir} · ${ago(x.at)}` }));
+  }
   if (!rows.length) rows.push(el('p', 'dir-note', T('noPeople')));
   list.replaceChildren(...rows);
 }
-const personOf = (key) => co?.people?.find((p) => p.sid === key) || null;
+// "5 minutes ago", "yesterday", "3 days ago"
+function ago(t) {
+  const s = (t - Date.now()) / 1000, f = new Intl.RelativeTimeFormat(locale(), { numeric: 'auto' });
+  if (s > -3600) return f.format(Math.round(s / 60), 'minute');
+  if (s > -86400) return f.format(Math.round(s / 3600), 'hour');
+  return f.format(Math.round(s / 86400), 'day');
+}
+const personOf = (key) => co?.people?.find((p) => p.sid === key) || co?.recent?.find((x) => x.sid === key) || null;
 
 /* ---------- one conversation ---------- */
 async function select(key) {

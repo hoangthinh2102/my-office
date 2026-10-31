@@ -19,7 +19,7 @@ export default {
   working: 'đang làm',
   talked: 'đã nhắn',
   noPeople: 'Chưa có nhân viên nào. Mở Claude Code trong một dự án, hoặc bấm "Tuyển nhân viên".',
-  group: { here: 'Đang ở văn phòng', past: 'Đã từng làm việc' },
+  group: { here: 'Đang ở văn phòng', past: 'Đã từng làm việc', recent: 'Phiên gần đây (14 ngày)' },
   roleTitlePh: 'Chức danh (vd: Backend dev)',
   roleBriefPh: 'Mô tả việc người này phụ trách',
   roleSaved: 'Đã lưu vai trò. Áp dụng từ tin nhắn tiếp theo.',
