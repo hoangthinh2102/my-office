@@ -37,13 +37,39 @@ export function openSession(id, opts = {}) {
   loadLog(true);
   queueUi();
 }
+// A closed conversation (the session list's "all"): the same drawer, its conversation read from the transcript. Its id
+// is "closed:<conversation id>"; once that person is back in the office the drawer moves to them.
+let closedItem = null;
+const closedNow = () => (closedItem && state.selectedId === `closed:${closedItem.sid}` ? closedItem : null);
+const liveOfSid = (sid) => [...sessions.values()].find((x) => x.sid === sid) || null;
+// the selected person: someone in the office, or a closed conversation shaped like one
+function current() {
+  const s = sessions.get(state.selectedId); if (s) return s;
+  const c = closedNow(); if (!c) return null;
+  return { id: state.selectedId, sid: c.sid, name: c.name, title: c.name, dir: c.dir, status: 'rest', closed: true, desk: -1, counts: {}, subs: [] };
+}
+/** x: { sid, name, dir } from /api/recent */
+export function openClosed(x) {
+  const live = liveOfSid(x.sid); if (live) { openSession(live.id); return; }
+  closeMac();
+  const id = `closed:${x.sid}`, same = state.selectedId === id && !drS.hidden;
+  closedItem = x; state.selectedId = id; drS.hidden = false; setView(null);
+  if (small.matches) $('feed').classList.remove('feed--open');
+  if (!same) { logItems = []; subItems = []; }
+  state.subView = null;
+  setTab('chat');
+  renderSessionHead(); renderActions();
+  loadLog(true);
+  queueUi();
+}
 export function closeSession() { state.selectedId = null; state.subView = null; drS.hidden = true; goView('home'); queueUi(); }
 export function renderSessionHead() {
-  const s = sessions.get(state.selectedId); if (!s) return;
+  const s = current(); if (!s) return;
+  if (s.closed) { const live = liveOfSid(s.sid); if (live) { openSession(live.id); return; } }   // (back in the office)
   $('ds-dot').style.background = colorOf(s);
   $('ds-name').textContent = dn(s);
   $('ds-dir').textContent = s.origin ? `${s.dir} · ${s.origin}` : s.dir;
-  const st = $('ds-status'); st.textContent = STATUS_LABEL[s.status]; st.dataset.status = s.status;
+  const st = $('ds-status'); st.textContent = s.closed ? tr('drawer.closedStatus') : STATUS_LABEL[s.status]; st.dataset.status = s.closed ? 'off' : s.status;
   $('ds-read').textContent = s.counts?.read ?? 0; $('ds-edit').textContent = s.counts?.edit ?? 0; $('ds-cmd').textContent = s.counts?.cmd ?? 0;
   $('ds-time').textContent = s.taskStart && s.status !== 'rest' ? fmtClock((nowMs() - s.taskStart) / 1000) : '–';
   const u = s.usage;
@@ -63,9 +89,18 @@ export async function openWindowOf(s) {
 // what the buttons below depend on
 let drawnSig = '', qrFor = null;   // (qrFor: the session whose Remote Control QR code is shown)
 const actionsSig = (s) => [s.id, s.status === 'rest', s.pid, s.moved?.to, s.acct, state.limits?.others?.length].join('|');
+// give them work: the director's office, on their conversation
+function workButton(s) {
+  const b = el('button', 'btn btn--sm' + (s.closed ? ' btn--primary' : '')); b.type = 'button'; b.append(icon('chat'), tr('drawer.giveWork'));
+  b.title = tr('drawer.giveWorkTitle');
+  b.addEventListener('click', () => import('./director.js').then((m) => m.openDirector('talk', s.sid)));
+  return b;
+}
 function renderActions() {
-  const s = sessions.get(state.selectedId); if (!s) return;
+  const s = current(); if (!s) return;
   const box = $('ds-actions'); box.replaceChildren(); drawnSig = actionsSig(s);
+  if (s.closed) { box.append(workButton(s), el('p', 'dr-note', tr('drawer.closedNote'))); return; }
+  if (s.sid && !DEMO) box.append(workButton(s));
   if (state.isLocal && s.pid) {
     const b = el('button', 'btn btn--sm'); b.type = 'button'; b.append(icon('monitor'), tr(s.origin === 'Terminal' ? 'drawer.openWindowTerminal' : s.origin ? 'drawer.openWindowIde' : 'drawer.openWindow'));
     b.title = tr('drawer.openWindowTitle'); b.addEventListener('click', () => openWindowOf(s)); box.append(b);
@@ -130,7 +165,8 @@ async function loadLog(scrollEnd = false) {
     return;
   }
   try {
-    const r = await fetch(`/api/log?id=${encodeURIComponent(id)}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}${TOKEN ? `&k=${encodeURIComponent(TOKEN)}` : ''}`);
+    const c = closedNow();
+    const r = await fetch(`/api/log?${c ? `sid=${encodeURIComponent(c.sid)}` : `id=${encodeURIComponent(id)}`}${agent ? `&agent=${encodeURIComponent(agent)}` : ''}${TOKEN ? `&k=${encodeURIComponent(TOKEN)}` : ''}`);
     const d = await r.json();
     if (id !== state.selectedId) return;
     // (nothing new since the last look: leave the page as it is, where you scrolled to)

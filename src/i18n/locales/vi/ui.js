@@ -154,6 +154,8 @@ export default {
     connecting: 'đang kết nối',
     loading: 'đang tải…',
     statusFilter: 'Lọc theo trạng thái',
+    all: 'tất cả',
+    allTitle: 'Mọi nhân viên: người đang ở văn phòng và mọi phiên trong 14 ngày qua (đã đóng thì chạm để nhắn qua Phòng giám đốc)',
     work: 'đang làm',
     wait: 'chờ duyệt',
     rest: 'đang nghỉ',

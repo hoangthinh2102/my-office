@@ -27,6 +27,7 @@ export default {
     wait: 'Needs your approval',
     work: 'Working',
     rest: 'Resting',
+    closed: 'Closed (last 14 days)',
   },
   waitingFor: 'waiting {time}',
   runsIn: '{dir} · running in {origin}',

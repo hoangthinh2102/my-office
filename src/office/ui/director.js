@@ -46,11 +46,13 @@ function nextSelect(sel, value = '', not = '') {
 const isOpen = () => modal && !modal.hidden;
 
 /* ---------- open / close / tabs ---------- */
-export async function openDirector(which = tab) {
+/** which: the tab; key: someone to open the conversation with (from the session list) */
+export async function openDirector(which = tab, key = null) {
   modal.hidden = false; $('btn-director')?.setAttribute('aria-pressed', 'true'); fitKeyboard();
   unread = 0; badge();
-  showTab(which);
+  showTab(key ? 'talk' : which);
   await loadCompany();
+  if (key) select(key);
 }
 function close() { modal.hidden = true; $('btn-director')?.setAttribute('aria-pressed', 'false'); fitKeyboard(); renderPerms(); }
 // on a phone the people list and a conversation take turns on the screen (director.css)
@@ -117,13 +119,13 @@ function renderPeople() {
     for (const p of co.people) {
       here.add(p.sid);
       const d = dmOf.get(p.sid);
-      rows.push(personRow({ key: p.sid, name: p.name, sub: p.role?.title || p.dir, status: p.status, running: d?.running, awaiting: d?.awaiting, badgeText: d?.msgs?.length ? T('talked') : '' }));
+      rows.push(personRow({ key: p.sid, name: p.name, sub: p.role?.title || p.dir, status: p.status, running: d?.running, awaiting: d?.awaiting, badgeText: d?.queued ? T('queue.badge') : d?.msgs?.length ? T('talked') : '' }));
     }
   }
   const past = (co.dms || []).filter((d) => !here.has(d.key));
   if (past.length) {
     rows.push(el('div', 'dir-pgroup', T('group.past')));
-    for (const d of past) rows.push(personRow({ key: d.key, name: d.name, sub: d.role?.title || d.dir, running: d.running, awaiting: d.awaiting }));
+    for (const d of past) rows.push(personRow({ key: d.key, name: d.name, sub: d.role?.title || d.dir, running: d.running, awaiting: d.awaiting, badgeText: d.queued ? T('queue.badge') : '' }));
   }
   // every other conversation of the last two weeks: message them and they carry on, no editor needed
   const older = (co.recent || []).filter((x) => !here.has(x.sid) && !(co.dms || []).some((d) => d.key === x.sid));
@@ -232,7 +234,7 @@ function renderThread() {
   renderHead();
   const box = $('dir-msgs'), text = $('dir-text'), send = $('dir-send');
   const can = !!(hiring || sel);
-  text.disabled = send.disabled = !can || !!thread?.running;
+  text.disabled = send.disabled = !can || !!thread?.running || !!thread?.queued;
   $('dir-stop').hidden = !thread?.running;
   renderAsk();
   if (hiring) {
@@ -250,7 +252,7 @@ function renderThread() {
   renderPending();
   box.scrollTop = keep ?? box.scrollHeight;
   const p = personOf(sel);
-  $('dir-mode').textContent = thread?.branch ? T('modeHint.branch') : p?.editor ? T('modeHint.willBranch') : T('modeHint.direct');
+  $('dir-mode').textContent = p?.editor ? T('modeHint.willBranch') : T('modeHint.direct');
 }
 async function sendNow(e) {
   e?.preventDefault();
@@ -272,6 +274,7 @@ async function sendNow(e) {
   if (!r.ok) { toast(r.message || T('failed')); $('dir-send').disabled = false; return; }
   $('dir-text').value = '';
   if (hiring) { hiring = false; $('dir-hire').hidden = true; for (const id of ['dir-hire-title', 'dir-hire-brief']) $(id).value = ''; }
+  if (r.queued) toast(T('queue.toast'), 6000);
   sel = r.key;
   await loadCompany();
   await loadThread(r.key);

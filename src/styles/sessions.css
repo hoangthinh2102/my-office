@@ -195,3 +195,14 @@
 .pop-seg button:focus-visible { outline: 2px solid var(--accent); }
 @media (max-width: 1280px) { #btn-look .lbl { display: none; } #btn-look { width: 38px; padding: 0; justify-content: center; } }
 @media (max-width: 720px) { .pop { position: fixed; left: 10px; right: 10px; top: 58px; width: auto; } .tb-clock { display: none; } .kpis { display: none; } .type-chips { display: none; } }
+
+/* recent conversations at the end of the list (ui/recent-rail.js): quieter than the people in the office */
+.rr-grp { margin-top: 14px; }
+.rr .av { --c: #6B7A90; }
+.rr .av-txt { font-weight: 700; font-size: .8rem; color: var(--ink); }
+.rr .ri-name { color: var(--muted); }
+/* the status filter: "all" first, then working, waiting, resting */
+.st-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.st { padding: 8px 7px; column-gap: 6px; }
+.st span { overflow: hidden; text-overflow: ellipsis; font-size: .64rem; }
+.st[data-st="all"] i { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }

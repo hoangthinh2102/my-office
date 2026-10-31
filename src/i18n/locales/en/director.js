@@ -28,10 +28,16 @@ export default {
   used: '{tokens} tokens · cache {cache}',
   turns: { one: '{n} turn', other: '{n} turns' },
   took: '{s} s',
-  mode: { direct: 'direct', branch: 'new branch', hire: 'new hire' },
+  queue: {
+    toast: "They're in the middle of something in VS Code: the message goes as soon as they're done.",
+    sent: 'They are free now: the waiting message went.',
+    failed: "The waiting message couldn't be sent. Try again.",
+    badge: 'waiting',
+  },
+  mode: { direct: 'direct', branch: 'new branch', hire: 'new hire', queued: 'waits until they are free' },
   modeHint: {
     direct: 'Straight into their conversation (nobody has it open).',
-    willBranch: 'Open in your editor: the first message makes a branch of it (the editor is left as it is); the next ones carry on that branch.',
+    willBranch: "Open in VS Code: messages go straight into this conversation (no new session). If they're mid-task, the message waits until they're done. The VS Code window shows the office's messages once you reopen the conversation.",
     branch: "On the office's own branch of their conversation (with all its context).",
     hire: "The first message is the new hire's first task.",
   },

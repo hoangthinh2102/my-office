@@ -224,6 +224,10 @@ const DEPLOY_RE = /\bgit\s+push\b[^\n;|&]*?\b(v\d+\.\d+\.\d+)\b/;
 /* ---------- state ---------- */
 const sessions = new Map(); // key ('p<pid>' or 's<sessionId>') -> session
 const sidToKey = new Map();
+// One conversation is one person. Branches the office made of someone's conversation before (data/dm.json "branch")
+// are that same person: branch id -> the person's own id. rootOf(sid) is who a conversation id belongs to.
+const branchRoot = new Map();
+const rootOf = (sid) => (sid && branchRoot.get(sid)) || sid;
 let feed = [];
 let seq = 0;
 const today = () => new Date().toLocaleDateString('sv-SE');
@@ -276,7 +280,7 @@ function freeDesk() {
   return -1;
 }
 const pubSub = (x) => ({ id: x.id, type: x.type, desc: x.desc || '', last: x.last || null, startedAt: x.startedAt, endedAt: x.endedAt || null, steps: x.steps || 0 });
-const pub = (s) => ({ id: s.id, pid: s.pid, name: s.name, title: s.title || '', dir: tilde(s.cwd), link: s.link, desk: s.desk, status: s.status, lastPrompt: s.lastPrompt && oneLine(unwrapPaste(s.lastPrompt)),
+const pub = (s) => ({ id: s.id, sid: rootOf(s.sid) || null, pid: s.pid, name: s.name, title: s.title || '', dir: tilde(s.cwd), link: s.link, desk: s.desk, status: s.status, lastPrompt: s.lastPrompt && oneLine(unwrapPaste(s.lastPrompt)),
   taskStart: s.taskStart, counts: s.counts, subs: Object.values(s.subs).map(pubSub), doneSubs: (s.doneSubs || []).map(pubSub), last: s.last, acct: acctOf(s),
   entry: s.entry || '', moved: s.parked ? { to: acctShown(s.parked.to), at: s.parked.at } : null,
   lastAt: s.lastEventAt || s.createdAt, doneAt: s.doneAt || 0, todos: s.todos || [], lastReply: s.lastReply || '', origin: s.origin || '',
@@ -320,7 +324,7 @@ function finishSub(s, agentId, now) {
   s.doneSubs = [x, ...(s.doneSubs || [])].slice(0, 8);
   return x;
 }
-const bySid = (sid) => sessions.get(sidToKey.get(sid));
+const bySid = (sid) => sessions.get(sidToKey.get(sid)) || sessions.get(sidToKey.get(rootOf(sid)));
 const alive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
 
 // Background work a session started (a shell with run_in_background, a monitor): PostToolUse reports a started
@@ -683,7 +687,12 @@ const DM_FILE = path.join(DATA_DIR, 'dm.json');
 // every conversation of the last two weeks, open or not: anyone can be messaged without reopening them (server/recent.mjs)
 const recent = createRecent({ claudeDir: CLAUDE_DIR });
 let dms = {};
-try { dms = JSON.parse(fs.readFileSync(DM_FILE, 'utf8')) || {}; for (const d of Object.values(dms)) d.running = false; } catch { /* none yet */ }
+try { dms = JSON.parse(fs.readFileSync(DM_FILE, 'utf8')) || {}; for (const d of Object.values(dms)) { d.running = false; noteBranch(d); } } catch { /* none yet */ }
+function noteBranch(d) { if (d?.branch && d.sid && d.branch !== d.sid) branchRoot.set(d.branch, d.sid); }
+// the live session of a person (their window, or the office's run of them)
+const liveOf = (sid) => [...sessions.values()].find((x) => x.sid && rootOf(x.sid) === sid) || null;
+// mid-turn in a window of their own: writing into the conversation now would race it, so the message waits
+const busyNow = (s) => !!s && !officeRun(s.sid) && (s.busy || s.status === 'work' || s.status === 'wait');
 let dmSaveT = null;
 const dmSave = () => {
   clearTimeout(dmSaveT);
@@ -692,7 +701,7 @@ const dmSave = () => {
     fsp.writeFile(`${DM_FILE}.tmp`, JSON.stringify(dms)).then(() => fsp.rename(`${DM_FILE}.tmp`, DM_FILE)).catch(() => {});
   }, 500);
 };
-const dmPub = (d, n = 80) => ({ key: d.key, name: d.name, dir: tilde(d.dir), sid: d.sid || null, branch: d.branch && d.branch !== d.sid ? d.branch : null, running: !!d.running,
+const dmPub = (d, n = 80) => ({ key: d.key, name: d.name, dir: tilde(d.dir), sid: d.sid || null, branch: d.branch && d.branch !== d.sid ? d.branch : null, running: !!d.running, queued: !!d.pending,
   ws: !!d.ws, role: company.roleOf(d.sid) || null, msgs: d.msgs.slice(-n), at: d.at || 0, awaiting: !!d.awaiting, ask: d.awaiting ? d.ask || { kind: 'approve' } : null, gate: !!d.gate });
 function dmAdd(d, m, was = null) {
   d.msgs.push({ id: crypto.randomUUID().slice(0, 8), at: Date.now(), ...m });
@@ -718,22 +727,28 @@ function dmSend(b) {
     d = dms[key] = { key, sid: null, name: role.title || path.basename(dir), dir, ws: !!ws, msgs: [], at: Date.now(), auto: !!b.auto, gate: b.gate || null };
     from = { dm: key, sid: null, hire: role, name: d.name, hops: b.chain?.hops || 0 };
   } else {
-    const sid = String(b?.sid || '');
-    const s = [...sessions.values()].find((x) => x.sid === sid);
+    const sid = rootOf(String(b?.sid || ''));
+    const s = liveOf(sid);
     const old = s ? null : recent.get(sid);   // (a conversation nobody has open: carried straight on)
     d = dms[sid] || (s?.cwd ? (dms[sid] = { key: sid, sid, name: s.title || s.name, dir: s.cwd, msgs: [], at: Date.now() })
       : old ? (dms[sid] = { key: sid, sid, name: recentName(old), dir: old.cwd, msgs: [], at: Date.now() }) : null);
     if (!d) return { ok: false, code: 'noDir' };
     if (s && !company.roleOf(sid)?.title) d.name = s.title || s.name || d.name;   // (someone you hired keeps the name you gave)
-    if (d.running) return { ok: false, code: 'busy' };
+    if (d.running || (d.pending && !b.queued)) return { ok: false, code: 'busy' };
     if (!b.chain) { d.awaiting = false; d.ask = null; }   // (what you write answers whatever they were waiting for)
     dir = s?.cwd || d.dir;
     if (!dir || !fs.existsSync(dir)) return { ok: false, code: 'noDir' };
     if (!b.force) { const over = overBudget(sid, path.basename(dir)); if (over) return { ok: false, code: 'overBudget', over }; }
     role = company.roleOf(sid);
-    // the branch made earlier; else the conversation itself when nobody has it open; else a new branch of it
-    const fork = !d.branch && openElsewhere(s);
-    from = { dm: d.key, sid: d.branch || sid, fork, name: d.name, id: s?.id, hops: b.chain?.hops || 0 };
+    // Always their own conversation, never a new branch of it (a branch made before carries on: it has what was said).
+    // Busy in their window right now: the message waits and goes as soon as they are done (pumpQueue).
+    if (busyNow(s) && !b.queued) {
+      d.pending = { text, force: !!b.force, chain: b.chain || null, auto: !!b.auto, at: Date.now() };
+      dmAdd(d, { from: b.chain ? 'handoff' : b.auto ? 'auto' : 'me', text, mode: 'queued' });
+      fsp.appendFile(ACTION_LOG, `${new Date().toISOString()} director queued ${sid} ${clip(oneLine(text), 100)}\n`).catch(() => {});
+      return { ok: true, key: d.key, queued: true };
+    }
+    from = { dm: d.key, sid: d.branch || sid, fork: false, name: d.name, id: s?.id, hops: b.chain?.hops || 0 };
   }
   // someone hired for the whole workspace keeps every repo of it open to their tools, message after message
   const addDirs = d.ws ? (ws || agentSupport.workspace())?.repos.map((x) => x.dir) || [] : [];
@@ -741,7 +756,8 @@ function dmSend(b) {
   if (!r.ok) { if (b?.hire) delete dms[d.key]; return { ok: false, code: r.code }; }
   d.running = r.task.id;
   if (b.chain?.from) dmAdd(d, { from: 'sys', text: tr('director.handoff.received', { from: b.chain.from }) });
-  dmAdd(d, { from: b.chain ? 'handoff' : b.auto ? 'auto' : 'me', text, mode: b?.hire ? 'hire' : from.fork ? 'branch' : 'direct' });
+  if (b.queued) dmAdd(d, { from: 'sys', text: tr('director.queue.sent') });
+  else dmAdd(d, { from: b.chain ? 'handoff' : b.auto ? 'auto' : 'me', text, mode: b?.hire ? 'hire' : 'direct' });
   fsp.appendFile(ACTION_LOG, `${new Date().toISOString()} director ${b.auto ? 'auto ' : ''}${b.chain ? 'handoff ' : ''}${b?.hire ? `hire in ${dir}` : `${from.fork ? 'branch' : 'carry'} ${from.sid}`} ${clip(oneLine(text), 100)}\n`).catch(() => {});
   return { ok: true, key: d.key };
 }
@@ -752,7 +768,7 @@ function dmDone(t) {
     company.setRole(t.sid, t.from.hire);
   }
   d.running = false;
-  if (t.sid) d.branch = t.sid;
+  if (t.sid) { d.branch = t.sid; noteBranch(d); }
   const failed = !!(t.error && !t.result);
   // a reply that stops to wait for you (a phase to approve, a choice): a report with buttons (server/asks.mjs)
   const said = failed ? { text: tr('chat.task.failed', { folder: path.basename(t.dir), error: clip(oneLine(t.error), 200) }), ask: null } : parseAsk(String(t.result || tr('chat.task.doneEmpty')));
@@ -808,12 +824,34 @@ function handOver(d, t, result) {
   if (r.ok && fromS && s) broadcast({ k: 'handoff', from: fromS.id, to: s.id });   // (in the office: the file carried over to their desk)
 }
 const dmList = () => Object.values(dms).sort((a, b) => (b.at || 0) - (a.at || 0)).map((d) => ({ ...dmPub(d, 1) }));
+// messages waiting for someone busy in their own window: sent once they are done
+setInterval(() => {
+  for (const d of Object.values(dms)) {
+    if (!d.pending || d.running || busyNow(liveOf(d.sid))) continue;
+    const p = d.pending;
+    const r = dmSend({ sid: d.sid, text: p.text, force: true, chain: p.chain, auto: p.auto, queued: true });
+    d.pending = null;
+    if (!r.ok) dmAdd(d, { from: 'sys', text: tr('director.queue.failed') });
+  }
+}, 3000).unref();
 const recentName = (x) => clip(redact(oneLine(x.title || '')), 80) || path.basename(x.cwd);
 // the conversations that are neither in the office now nor already talked to here (nor a branch the office made)
-async function recentOut() {
-  const here = new Set([...sessions.values()].map((s) => s.sid).filter(Boolean)), branches = new Set(Object.values(dms).map((d) => d.branch).filter(Boolean));
-  return (await recent.list()).filter((x) => !here.has(x.sid) && !dms[x.sid] && !branches.has(x.sid))
-    .map((x) => ({ sid: x.sid, name: recentName(x), dir: tilde(x.cwd), at: x.at, role: company.roleOf(x.sid) || null }));
+// (talked: also the ones already talked to here, for the session list, which shows everyone not in the office)
+async function recentOut({ talked = false } = {}) {
+  const here = new Set([...sessions.values()].map((s) => rootOf(s.sid)).filter(Boolean));
+  // a conversation and its branches are one person (the same first message): shown once, by the id they are known by
+  // (talked to here, else the oldest of them), with the latest activity of any of them
+  const groups = new Map();
+  for (const x of await recent.list()) { const k = x.first || x.sid; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(x); }
+  const out = [];
+  for (const g of groups.values()) {
+    if (g.some((x) => here.has(x.sid) || here.has(rootOf(x.sid)))) continue;   // (in the office now)
+    const one = g.find((x) => dms[x.sid]) || g.find((x) => dms[rootOf(x.sid)] && rootOf(x.sid) === x.sid) || [...g].sort((a, b) => (a.born || 0) - (b.born || 0))[0];
+    const sid = rootOf(one.sid);
+    if (!talked && dms[sid]) continue;
+    out.push({ sid, name: (dms[sid] && company.roleOf(sid)?.title && dms[sid].name) || recentName(one), dir: tilde(one.cwd), at: Math.max(...g.map((x) => x.at)), role: company.roleOf(sid) || null });
+  }
+  return out.sort((a, b) => b.at - a.at);
 }
 
 /* ---------- the morning: at the start of work (or the time you set), on a working day, the office gives the day's
@@ -885,11 +923,22 @@ async function sameProcess(j) {
 async function doScan() {
   let files = [];
   try { files = (await fsp.readdir(SESS_DIR)).filter((f) => f.endsWith('.json')); } catch { return; }
-  const live = new Set();
+  const live = new Set(), found = [];
   for (const f of files) {
     let j;
     try { j = JSON.parse(await fsp.readFile(path.join(SESS_DIR, f), 'utf8')); } catch { continue; }
     if (!j.pid || !alive(j.pid) || !(await sameProcess(j))) continue;
+    found.push(j);
+  }
+  // Two processes on one person's conversation (open in VS Code while the office carries it on, or a branch the office
+  // made of it): one person in the office. The window you work in wins over the office's headless run (sdk-cli).
+  const pick = new Map();
+  for (const j of found) {
+    const who = rootOf(j.sessionId) || `pid:${j.pid}`, cur = pick.get(who);
+    const rank = (x) => (x.entrypoint === 'sdk-cli' ? 0 : 1) * 1e15 + (x.startedAt || 0);
+    if (!cur || rank(j) > rank(cur)) pick.set(who, j);
+  }
+  for (const j of pick.values()) {
     const key = 'p' + j.pid;
     live.add(key);
     let s = sessions.get(key);
@@ -2423,14 +2472,15 @@ const server = http.createServer((req, res) => {
   if (url.pathname === '/api/tasks') { json(res, 200, tasksOut(isLoopback(req))); return; }
   if (url.pathname === '/api/company') {   // the director's office: the company, the people, the skills everyone loads, the conversations
     Promise.all([company.skills(), recentOut()]).then(([skills, older]) => json(res, 200, { ok: true, ...company.pub(), skills, hook: rulesHookOn(), local: isLoopback(req), recent: older,
-      people: [...sessions.values()].filter((s) => s.sid).map((s) => ({ id: s.id, sid: s.sid, name: s.title || s.name, dir: tilde(s.cwd), status: s.status, role: company.roleOf(s.sid), editor: openElsewhere(s) })),
+      people: [...sessions.values()].filter((s) => s.sid).map((s) => ({ id: s.id, sid: rootOf(s.sid), name: s.title || s.name, dir: tilde(s.cwd), status: s.status, role: company.roleOf(s.sid), editor: openElsewhere(s) })),
       projects: knownDirs.filter((d) => fs.existsSync(d)).map((d) => ({ dir: tilde(d), name: path.basename(d) })), dms: dmList(),
       workspace: (() => { const w = agentSupport.workspace(); return w ? { root: tilde(w.root), repos: w.repos.map((x) => x.name) } : null; })(),
       perms: Object.keys(PERMS), budgetNow: budgetPub(), terminal: process.platform === 'darwin' || process.platform === 'linux' }));
     return;
   }
+  if (url.pathname === '/api/recent') { recentOut({ talked: true }).then((items) => json(res, 200, { items })).catch(() => json(res, 200, { items: [] })); return; }   // the session list's "recent conversations"
   if (url.pathname === '/api/dm/history') {   // this person's own conversation (the editor, a terminal), before and after you wrote to them here
-    const key = String(url.searchParams.get('key') || ''), d = dms[key], s = [...sessions.values()].find((x) => x.sid === key);
+    const key = String(url.searchParams.get('key') || ''), d = dms[key], s = liveOf(key);
     const old = recent.get(key), who = s || (d?.sid && d.dir ? { sid: d.sid, cwd: d.dir, transcript: old?.transcript } : old ? { sid: old.sid, cwd: old.cwd, transcript: old.transcript } : null);
     if (!who) { json(res, 200, { items: [] }); return; }
     // what is already in the director's conversation (what you sent, their answers) isn't shown twice
@@ -2521,8 +2571,10 @@ const server = http.createServer((req, res) => {
     req.on('close', () => { waiting.delete(answer); clearTimeout(timer); });
     return;
   }
-  if (url.pathname === '/api/log') {
-    const s = [...sessions.values()].find((x) => x.id === url.searchParams.get('id'));
+  if (url.pathname === '/api/log') {   // ?id= someone in the office; ?sid= a closed conversation (the session list's "all")
+    const csid = String(url.searchParams.get('sid') || ''), old = csid ? recent.get(csid) : null, d = csid ? dms[csid] : null;
+    const s = csid ? (old ? { sid: old.sid, cwd: old.cwd, transcript: old.transcript } : d?.sid && d.dir ? { sid: d.sid, cwd: d.dir } : null)
+      : [...sessions.values()].find((x) => x.id === url.searchParams.get('id'));
     if (!s) { json(res, 404, { items: [] }); return; }
     readLog(s, 120, url.searchParams.get('agent'), { branch: true }).then((items) => json(res, 200, { items })).catch(() => json(res, 200, { items: [] }));
     return;

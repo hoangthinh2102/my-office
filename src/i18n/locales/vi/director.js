@@ -28,10 +28,16 @@ export default {
   used: '{tokens} token · cache {cache}',
   turns: { one: '{n} lượt', other: '{n} lượt' },
   took: '{s} giây',
-  mode: { direct: 'nhắn thẳng', branch: 'nhánh mới', hire: 'tuyển mới' },
+  mode: { direct: 'nhắn thẳng', branch: 'nhánh mới', hire: 'tuyển mới', queued: 'chờ người này rảnh' },
+  queue: {
+    toast: 'Người này đang làm dở trong VS Code: tin sẽ tự gửi ngay khi họ xong.',
+    sent: 'Người này đã rảnh: đã gửi tin đang chờ.',
+    failed: 'Không gửi được tin đang chờ. Thử gửi lại.',
+    badge: 'chờ gửi',
+  },
   modeHint: {
     direct: 'Nhắn thẳng vào cuộc trò chuyện của người này (không ai đang mở nó).',
-    willBranch: 'Phiên đang mở trong IDE: tin đầu tiên tạo một nhánh riêng (giữ nguyên cửa sổ IDE), các tin sau nối tiếp nhánh đó.',
+    willBranch: 'Đang mở trong VS Code: tin đi thẳng vào đúng cuộc trò chuyện này (không tạo phiên mới). Họ đang làm dở thì tin chờ tới khi xong. Cửa sổ VS Code chỉ thấy tin của văn phòng sau khi mở lại cuộc trò chuyện.',
     branch: 'Đang trao đổi trên nhánh riêng của văn phòng (có đủ ngữ cảnh cũ).',
     hire: 'Tin đầu tiên là việc đầu tiên của nhân viên mới.',
   },

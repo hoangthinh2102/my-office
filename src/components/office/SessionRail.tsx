@@ -10,6 +10,7 @@ export default async function SessionRail() {
         <div className="lp-title"><h2>{t('ui.sessionRail.title')}</h2><p className="conn" id="conn" data-state="off"><i></i><span>{t('ui.sessionRail.connecting')}</span></p></div>
         <p className="lp-sub" id="active-count">{t('ui.sessionRail.loading')}</p>
         <div className="st-row" role="group" aria-label={t('ui.sessionRail.statusFilter')}>
+          <button type="button" className="st" data-st="all" aria-pressed="false" title={t('ui.sessionRail.allTitle')}><i></i><b id="st-all">0</b><span>{t('ui.sessionRail.all')}</span></button>
           <button type="button" className="st" data-st="work" aria-pressed="false"><i></i><b id="st-work">0</b><span>{t('ui.sessionRail.work')}</span></button>
           <button type="button" className="st" data-st="wait" aria-pressed="false"><i></i><b id="st-wait">0</b><span>{t('ui.sessionRail.wait')}</span></button>
           <button type="button" className="st" data-st="rest" aria-pressed="false"><i></i><b id="st-rest">0</b><span>{t('ui.sessionRail.rest')}</span></button>

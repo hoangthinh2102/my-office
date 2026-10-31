@@ -158,6 +158,13 @@ test('recent conversations: folder, title (rename first), newest first, only rea
   assert.deepEqual(l.map((x) => [x.sid, x.title, x.cwd]), [[b, 'Renamed', work], [a, 'sửa lỗi đăng nhập', work]]);
   assert.equal(r.get(a).transcript, path.join(proj, `${a}.jsonl`));
   assert.equal(r.get('nope'), null);
+  // a branch of a conversation copies its messages: same first message id, so they are known to be one person
+  const br = '55555555-5555-4555-8555-555555555555';
+  fs.writeFileSync(path.join(proj, `${a}.jsonl`), line({ type: 'user', uuid: 'm-1', cwd: work, message: { content: 'sửa lỗi đăng nhập' } }));
+  fs.writeFileSync(path.join(proj, `${br}.jsonl`), line({ type: 'user', uuid: 'm-1', cwd: work, message: { content: 'sửa lỗi đăng nhập' } }) + line({ type: 'user', uuid: 'm-2', cwd: work, message: { content: 'tiếp' } }));
+  const l2 = await createRecent({ claudeDir: cl }).list();
+  assert.equal(l2.find((x) => x.sid === br).first, l2.find((x) => x.sid === a).first);
+  assert.notEqual(l2.find((x) => x.sid === b).first, 'm-1');
   // a conversation in a temporary folder is left out
   const scratch = tmp('office-scratch-'), c = '44444444-4444-4444-8444-444444444444';
   fs.writeFileSync(path.join(proj, `${c}.jsonl`), line({ type: 'user', cwd: scratch, message: { content: 'scratch' } }));

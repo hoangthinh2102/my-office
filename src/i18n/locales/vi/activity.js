@@ -25,6 +25,7 @@ export default {
     wait: 'Cần bạn duyệt',
     work: 'Đang làm',
     rest: 'Đang nghỉ',
+    closed: 'Đã đóng (14 ngày qua)',
   },
   waitingFor: 'chờ {time}',
   runsIn: '{dir} · chạy trong {origin}',

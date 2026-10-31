@@ -2,6 +2,8 @@
 // <claude dir>/projects/<folder>/<id>.jsonl), so the director can message anyone without reopening them in an editor.
 // A transcript gives its folder (the "cwd" of its lines), its title (your rename, else the generated one, else the first
 // thing you typed) and when it last changed. Read once per file and change, and the listing at most every 20 seconds.
+// A branch of a conversation (--fork-session, /branch) is a new file that copies the messages, ids and all: the id of the
+// first message ("first") is how a branch and the conversation it came from are known to be the same person.
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
@@ -31,6 +33,14 @@ function firstPrompt(head) {
   }
   return '';
 }
+// the id of the first message in the conversation
+function firstId(head) {
+  for (const line of head.split('\n')) {
+    if (!line.includes('"uuid":"') || !/"type":"(user|assistant)"/.test(line)) continue;
+    try { const j = JSON.parse(line); if (j.uuid && !j.isSidechain) return j.uuid; } catch { /* cut */ }
+  }
+  return null;
+}
 async function readEnds(file, size) {
   const fh = await fsp.open(file, 'r');
   try {
@@ -59,7 +69,7 @@ export function createRecent({ claudeDir, days = 14, max = 80 }) {
         const file = path.join(root, d.name, f);
         let st; try { st = await fsp.stat(file); } catch { continue; }
         if (st.mtimeMs < since || !st.size) continue;
-        found.push({ file, sid: f.slice(0, -6), mtime: st.mtimeMs, size: st.size });
+        found.push({ file, sid: f.slice(0, -6), mtime: st.mtimeMs, size: st.size, born: st.birthtimeMs || st.ctimeMs });
       }
     }
     found.sort((a, b) => b.mtime - a.mtime);
@@ -76,6 +86,7 @@ export function createRecent({ claudeDir, days = 14, max = 80 }) {
           const title = lastField(tail, 'customTitle') ?? c?.item?.custom ?? null;
           item = { sid: x.sid, cwd, transcript: x.file, at: x.mtime, custom: title, title: title || lastField(tail, 'aiTitle') || c?.item?.ai || firstPrompt(head) };
           item.ai = lastField(tail, 'aiTitle') || c?.item?.ai || null;
+          item.first = c?.item?.first || firstId(head); item.born = x.born;
         }
       } catch { /* unreadable */ }
       cache.set(x.file, { mtime: x.mtime, size: x.size, item });

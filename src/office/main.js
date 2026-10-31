@@ -84,6 +84,7 @@ import * as uiLookSwitch from './ui/look-switch.js';
 import * as uiSettings from './ui/settings.js';
 import * as uiWrapped from './ui/wrapped.js';
 import * as uiDirector from './ui/director.js';
+import * as uiRecentRail from './ui/recent-rail.js';
 import * as uiPhoto from './ui/photo.js';
 import * as uiTimelapse from './ui/timelapse.js';
 import * as uiGroupChat from './ui/group-chat.js';
@@ -178,6 +179,7 @@ const MODULES = [
   uiLite,
   worldRoomUpdate,
   uiActivity,
+  uiRecentRail,
   uiSessionDrawer,
   uiCameraBar,
   uiMacDrawer,

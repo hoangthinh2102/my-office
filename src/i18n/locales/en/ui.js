@@ -154,6 +154,8 @@ export default {
     connecting: 'connecting',
     loading: 'loading…',
     statusFilter: 'Filter by status',
+    all: 'all',
+    allTitle: 'Everyone: the people in the office and every conversation of the last 14 days (tap a closed one to message it from the director\'s office)',
     work: 'working',
     wait: 'waiting',
     rest: 'resting',

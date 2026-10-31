@@ -13,6 +13,7 @@ import { unseenDone } from '../life/your-turn.js';
 import { whereabouts } from '../people/outings.js';
 import { imageUrl, openImage } from './image-view.js';
 import { t as tr, num } from '../../i18n/index.js';
+import { sync as syncRecent } from './recent-rail.js';
 
 let feedFilter = 'all';
 let query = '';
@@ -165,7 +166,7 @@ function subRow(s, x) {
 }
 function renderRail() {
   const all = [...sessions.values()].sort(order);
-  const q = query.trim().toLowerCase();
+  const q = query.trim().toLowerCase(), only = railFilter === 'all' ? null : railFilter;   // ("all": everyone, nobody folded away)
   const rail = $('rail-list'), chips = $('chips');
   const ram = new Map((macSnap?.claude || []).map((c) => [c.pid, c.mem]));
   const count = { wait: 0, work: 0, rest: 0 };
@@ -199,14 +200,14 @@ function renderRail() {
     if (sig !== r.subSig) { r.subSig = sig; r.subList.replaceChildren(...subsNow.map((x) => subRow(s, x))); }
     r.subList.hidden = !subsNow.length;
     const match = !q || s.name.toLowerCase().includes(q) || String(s.title || '').toLowerCase().includes(q) || String(s.dir || '').toLowerCase().includes(q);
-    const folded = s.status === 'rest' && restCollapsed && !q && railFilter !== 'rest';
-    r.li.hidden = !match || (railFilter && s.status !== railFilter) || folded;
+    const folded = s.status === 'rest' && restCollapsed && !q && !railFilter;
+    r.li.hidden = !match || (only && s.status !== only) || folded;
     r.c.dataset.status = s.status; r.c.setAttribute('aria-current', cur); r.cd.style.background = color;
     if (r.cn.textContent !== dn(s)) r.cn.textContent = dn(s);
     r.cs.textContent = STATUS_LABEL[s.status];
   }
-  for (const [k] of GROUPS) { const g = grpEls[k]; g.n.textContent = count[k] || 0; g.li.hidden = !count[k] || (railFilter && railFilter !== k); }
-  grpEls.rest.b.setAttribute('aria-expanded', String(!restCollapsed || !!q || railFilter === 'rest'));
+  for (const [k] of GROUPS) { const g = grpEls[k]; g.n.textContent = count[k] || 0; g.li.hidden = !count[k] || (only && only !== k); }
+  grpEls.rest.b.setAttribute('aria-expanded', String(!restCollapsed || !!q || !!railFilter));
   for (const k of ['work', 'wait', 'rest']) { $('st-' + k).textContent = count[k] || 0; }
   document.querySelector('.st[data-st="wait"]').classList.toggle('has', !!count.wait);
   const ord = all.map((s) => s.id + s.status).join();
@@ -215,6 +216,7 @@ function renderRail() {
     for (const [k] of GROUPS) { rail.append(grpEls[k].li); for (const s of all) if (s.status === k) rail.append(railRows.get(s.id).li); }
     for (const s of all) chips.append(railRows.get(s.id).c);
   }
+  syncRecent(railFilter);   // ("all": the closed conversations, at the end)
   $('empty').hidden = all.length > 0 || !state.connectedOnce;
   for (const w of workers.values()) w.tagEl.classList.toggle('tag--on', w.id === state.selectedId);
 }
