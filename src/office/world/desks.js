@@ -71,6 +71,41 @@ export function syncKit(i) {
   if (w) { k.jm.color.set(w.cfg.coat || COATS[0]); k.bm.color.set(w.cfg.bag || BAGS[0]); }
 }
 
+/** A desk's own pieces, in its group g (the desk's frame): top, legs, laptop, mug, the office desk's second screen and
+ *  drawers (pro), a lamp on every third. scr is the screens' material; the lamp's bulb goes into `bulbs`. Also a team
+ *  floor's desks (world/tower-floor.js). */
+export function deskPieces(g, i, scr, pro = PRO, bulbs = lampBulbs) {
+  if (!deskTop) { deskTop = mat('#F4F0E8', { roughness: 0.45 }); deskMat = mat('#2C323C', { roughness: 0.8 }); monitorM = mat('#1B1F26', { roughness: 0.4 }); pedM = mat('#D8D3CA', { roughness: 0.6 }); }
+  put(g, rbox(1.5, 0.05, 0.74, deskTop, 0.02), 0, 0.75, 0);
+  for (const sx of [-1, 1]) {
+    put(g, rbox(0.05, 0.72, 0.05, metal, 0.01), sx * 0.68, 0.37, 0.3); put(g, rbox(0.05, 0.72, 0.05, metal, 0.01), sx * 0.68, 0.37, -0.3);
+    put(g, rbox(0.05, 0.05, 0.64, metal, 0.01), sx * 0.68, 0.04, 0);
+  }
+  put(g, rbox(1.36, 0.3, 0.025, metal, 0.01), 0, 0.56, 0.33);
+  put(g, rbox(0.95, 0.008, 0.42, deskMat, 0.004), 0, 0.778, -0.08);
+  put(g, rbox(0.56, 0.03, 0.38, mat('#C9CED6', { metalness: 0.5, roughness: 0.35 }), 0.012), 0, 0.795, -0.04);
+  const lid = new THREE.Group(); lid.position.set(0, 0.81, 0.15); lid.rotation.x = 0.28; g.add(lid);
+  put(lid, rbox(0.56, 0.38, 0.025, mat('#C9CED6', { metalness: 0.5, roughness: 0.35 }), 0.012), 0, 0.19, 0);
+  put(lid, new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.32), scr), 0, 0.19, -0.014).rotation.y = Math.PI;
+  put(lid, new THREE.Mesh(new THREE.CircleGeometry(0.04, 20), new THREE.MeshBasicMaterial({ color: '#F7F3EA' })), 0, 0.2, 0.014);
+  put(g, cyl(0.055, 0.05, 0.11, '#FFFFFF'), 0.52, 0.83, 0.16);
+  if (pro) {   // office desk: a second screen on the left corner, drawers under the desk
+    const mon = new THREE.Group(); mon.position.set(-0.5, 0.775, 0.2); mon.rotation.y = 0.45; g.add(mon);
+    put(mon, rbox(0.2, 0.02, 0.14, metal, 0.01), 0, 0.01, 0); put(mon, rbox(0.04, 0.24, 0.03, metal, 0.01), 0, 0.13, 0.02);
+    put(mon, rbox(0.5, 0.31, 0.03, monitorM, 0.012), 0, 0.33, 0);
+    put(mon, new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.27), scr), 0, 0.33, -0.017).rotation.y = Math.PI;
+    put(g, rbox(0.4, 0.58, 0.55, pedM, 0.02), 0.45, 0.29, 0.04);
+    for (const y of [0.18, 0.36, 0.52]) put(g, rbox(0.1, 0.015, 0.02, metal, 0.004), 0.45, y, -0.24);
+  } else if (i % 3 === 0) potPlant(-0.58, -0.18, 0.32, i % 2 ? 'snake' : 'bush', 0.775, g);   // (the in-tray at the front left: shredder.js)
+  if (i % 3 === 2) {
+    put(g, cyl(0.08, 0.09, 0.03, metal, 12), 0.6, 0.79, -0.2);
+    put(g, cyl(0.015, 0.015, 0.34, metal, 6), 0.6, 0.96, -0.2);
+    put(g, new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.14, 16, 1, true), mat('#2B2F36', { side: THREE.DoubleSide })), 0.6, 1.15, -0.2);
+    const bm = new THREE.MeshBasicMaterial({ color: BULB_OFF.clone() }); bulbs.push(bm);
+    put(g, new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), bm), 0.6, 1.09, -0.2);
+  }
+}
+
 export function setup() {
   PODS = PRO ? [[-0.1, 1.5], [5.1, 1.5], [2.5, 6.6], ...(HQ ? DEPTS.flatMap((d) => d.pods) : [])] : []; TEAM_SIZE = PRO ? 4 : DESK_COLS.length;
   const range = (a, n) => Array.from({ length: n }, (_, k) => a + k);
@@ -87,36 +122,9 @@ export function setup() {
   monitorM = mat('#1B1F26', { roughness: 0.4 }); pedM = mat('#D8D3CA', { roughness: 0.6 });
   DESKS.forEach((d, i) => {
     const g = new THREE.Group(); g.position.set(d.x, 0, d.z); g.rotation.y = d.ry; scene.add(g); d.g = g;
-    put(g, rbox(1.5, 0.05, 0.74, deskTop, 0.02), 0, 0.75, 0);
-    for (const sx of [-1, 1]) {
-      put(g, rbox(0.05, 0.72, 0.05, metal, 0.01), sx * 0.68, 0.37, 0.3); put(g, rbox(0.05, 0.72, 0.05, metal, 0.01), sx * 0.68, 0.37, -0.3);
-      put(g, rbox(0.05, 0.05, 0.64, metal, 0.01), sx * 0.68, 0.04, 0);
-    }
-    put(g, rbox(1.36, 0.3, 0.025, metal, 0.01), 0, 0.56, 0.33);
-    put(g, rbox(0.95, 0.008, 0.42, deskMat, 0.004), 0, 0.778, -0.08);
-    put(g, rbox(0.56, 0.03, 0.38, mat('#C9CED6', { metalness: 0.5, roughness: 0.35 }), 0.012), 0, 0.795, -0.04);
-    const lid = new THREE.Group(); lid.position.set(0, 0.81, 0.15); lid.rotation.x = 0.28; g.add(lid);
-    put(lid, rbox(0.56, 0.38, 0.025, mat('#C9CED6', { metalness: 0.5, roughness: 0.35 }), 0.012), 0, 0.19, 0);
     const scr = toonMat({ color: '#FFFFFF', map: offTexture(), emissive: '#FFFFFF', emissiveMap: offTexture(), emissiveIntensity: 0.05, roughness: 0.3 });
-    put(lid, new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.32), scr), 0, 0.19, -0.014).rotation.y = Math.PI;
-    put(lid, new THREE.Mesh(new THREE.CircleGeometry(0.04, 20), new THREE.MeshBasicMaterial({ color: '#F7F3EA' })), 0, 0.2, 0.014);
+    deskPieces(g, i, scr);
     screens.push(scr);
-    put(g, cyl(0.055, 0.05, 0.11, '#FFFFFF'), 0.52, 0.83, 0.16);
-    if (PRO) {   // office desk: a second screen on the left corner, drawers under the desk
-      const mon = new THREE.Group(); mon.position.set(-0.5, 0.775, 0.2); mon.rotation.y = 0.45; g.add(mon);
-      put(mon, rbox(0.2, 0.02, 0.14, metal, 0.01), 0, 0.01, 0); put(mon, rbox(0.04, 0.24, 0.03, metal, 0.01), 0, 0.13, 0.02);
-      put(mon, rbox(0.5, 0.31, 0.03, monitorM, 0.012), 0, 0.33, 0);
-      put(mon, new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.27), scr), 0, 0.33, -0.017).rotation.y = Math.PI;
-      put(g, rbox(0.4, 0.58, 0.55, pedM, 0.02), 0.45, 0.29, 0.04);
-      for (const y of [0.18, 0.36, 0.52]) put(g, rbox(0.1, 0.015, 0.02, metal, 0.004), 0.45, y, -0.24);
-    } else if (i % 3 === 0) potPlant(-0.58, -0.18, 0.32, i % 2 ? 'snake' : 'bush', 0.775, g);   // (the in-tray at the front left: shredder.js)
-    if (i % 3 === 2) {
-      put(g, cyl(0.08, 0.09, 0.03, metal, 12), 0.6, 0.79, -0.2);
-      put(g, cyl(0.015, 0.015, 0.34, metal, 6), 0.6, 0.96, -0.2);
-      put(g, new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.14, 16, 1, true), mat('#2B2F36', { side: THREE.DoubleSide })), 0.6, 1.15, -0.2);
-      const bm = new THREE.MeshBasicMaterial({ color: BULB_OFF.clone() }); lampBulbs.push(bm);
-      put(g, new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), bm), 0.6, 1.09, -0.2);
-    }
     const chairM = mat(CHAIR_IDLE, { roughness: 0.9 }); chairs.push(chairM);
     d.chair = officeChair(g, 0, -0.66, chairM);
     d.bed = makeBedding(d.chair);

@@ -1,21 +1,24 @@
 // Team mode's building in 3D (headquarters plan only; docs/features/team-mode.md): every other member's room on a floor
 // above the wing, four to a floor (src/shared/team-floors.js), the team's lift at the back. Nothing of it is drawn until
 // you look: "your floor" is the office as it always was; "the building" shows every floor from outside (glass fronts lit
-// where someone is in, the team's name on the roof); a floor shows its rooms from above, the floors over it lifted away.
+// where someone is in); a floor shows its rooms from above, the floors over it lifted away.
 // Open rooms: their people at their desks, a character each (view only). Closed rooms: smart glass, only shadows, one
-// per person. Offline: lights out, empty chairs. The lift (ui/team-lift.js) chooses what you look at.
+// per person. Offline: lights out, empty chairs. The lift (ui/team-lift.js) chooses what you look at. The floor you are
+// on is furnished in full (world/tower-floor.js): its own look, things to click, people who go to the break corner.
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { HQ, el } from '../core/env.js';
 import { state } from '../core/state.js';
-import { BASE_ZOOM, HOME, camera, controls, scene } from '../scene/renderer.js';
+import { BASE_ZOOM, HOME, camera, controls, renderer, scene } from '../scene/renderer.js';
 import { focusTarget } from '../core/loop.js';
 import { night } from './room-update.js';
 import { DEPTS, WING } from './layout.js';
 import { applyChibiPose, chibiPose, makeChibi } from '../people/chibi-rig.js';
 import { PALETTE, hash } from '../people/workers.js';
 import { fitText } from '../scene/blocks.js';
-import { FLOOR_H, TOWER_Y0, floorY, floorsOf, seatPeople, seesIn, silhouettes, stateOf } from '../../shared/team-floors.js';
+import { gridTex, plankTex, speckTex } from './pro/pieces.js';
+import { furnishFloor, pathTo, roomPlan } from './tower-floor.js';
+import { BREAK_SEATS, FLOOR_H, TOWER_Y0, floorY, floorsOf, seatPeople, seesIn, silhouettes, stateOf, themeOf } from '../../shared/team-floors.js';
 import { t as tr } from '../../i18n/index.js';
 
 const X0 = -8, X1 = 14, Z0 = WING.z0, Z1 = WING.z1, CX = (X0 + X1) / 2, CZ = (Z0 + Z1) / 2;
@@ -47,8 +50,10 @@ const LIFT = { x0: WING.corB[0], x1: WING.corB[1], z0: Z0 + 0.05, z1: WING.corA[
 let M = null;              // shared materials and geometry, made the first time the building is needed
 let tower = null, roof = null, columns = null, cab = null;
 let floors = [];           // [{ n, y, g, rooms: [RoomView|null], inst, hits, label, dir }]
-let layoutKey = '', teamName = '';
+let layoutKey = '';
 const seatsOf = new Map(); // member id -> Map person id -> seat (kept across updates)
+const breakOf = new Map(); // member id -> Map person id -> break-corner seat, for whoever is resting
+let detail = null;         // the floor you are on, furnished: { F, D } (world/tower-floor.js)
 const chars = new Map();   // `${member}/${person}` -> { root, P, anim, seed, seat, room, floor }
 export const view = { mode: 'mine', floor: 0 };
 let minZoom0 = 0, cabY = TOWER_Y0, nightShown = null;
@@ -62,7 +67,7 @@ function materials() {
     box: new THREE.BoxGeometry(1, 1, 1), plane: new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
     body: new THREE.CapsuleGeometry(0.17, 0.3, 4, 10), head: new THREE.SphereGeometry(0.17, 14, 10),
     slab: std('#2E343C', { roughness: 0.6, metalness: 0.2 }), mull: std('#3A414B', { roughness: 0.4, metalness: 0.5 }),
-    corridor: std('#D7D2CA', { roughness: 0.6 }), low: std('#E6E0D6', { roughness: 0.9 }), column: std('#C9C4BB', { roughness: 0.7 }),
+    low: std('#E6E0D6', { roughness: 0.9 }), column: std('#C9C4BB', { roughness: 0.7 }),
     desk: std('#F4F0E8', { roughness: 0.45 }), ped: std('#D8D3CA', { roughness: 0.6 }), chair: std('#596170', { roughness: 0.9 }), mon: std('#1B1F26', { roughness: 0.4 }),
     screen: new THREE.MeshBasicMaterial({ color: '#FFFFFF' }), bean: std('#FFFFFF', { roughness: 0.85 }), skin: std('#F0C8A4', { roughness: 0.7 }),
     shade: new THREE.MeshBasicMaterial({ color: '#3E4752', transparent: true, opacity: 0.7, depthWrite: false }),
@@ -72,6 +77,18 @@ function materials() {
   };
   return M;
 }
+// the corridors' floor in each look, and the rooms' carpet (tinted with the member's colour), drawn once
+const TEX = {};
+function tiled(key, make, w, d, tile) {
+  const base = (TEX[key] ||= make()), t = base.clone();
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(w / tile, d / tile); t.needsUpdate = true; return t;
+}
+const CORRIDOR = {
+  studio: [() => gridTex('#D7D2CA', 'rgba(120,110,100,.25)', 2), 1.2],
+  garden: [() => plankTex(32, 74, 22), 3],
+  library: [() => plankTex(24, 46, 34), 3],
+};
+const corridorMat = (theme, w, d) => new THREE.MeshStandardMaterial({ map: tiled(theme, CORRIDOR[theme][0], w, d, CORRIDOR[theme][1]), roughness: 0.6 });
 const put = (g, mesh, x, y, z) => { mesh.position.set(x, y, z); g.add(mesh); return mesh; };
 const block = (g, m, w, h, d, x, y, z) => { const o = put(g, new THREE.Mesh(M.box, m), x, y, z); o.scale.set(w, h, d); return o; };
 // a glass pane from (ax, az) to (bx, bz), standing on the floor
@@ -101,8 +118,9 @@ function buildFloor(f) {
   const y = floorY(f.n), g = new THREE.Group(); g.position.y = y; g.name = `team-floor-${f.n}`;
   // slab (its dark edge is the band between two floors' glass), corridors, the lift lobby's directory
   block(g, M.slab, X1 - X0 + 0.3, 0.3, Z1 - Z0 + 0.3, CX, -0.15, CZ);
-  const corA = put(g, new THREE.Mesh(M.plane, M.corridor), CX, 0.005, (WING.corA[0] + WING.corA[1]) / 2); corA.scale.set(X1 - X0, 1, WING.corA[1] - WING.corA[0]);
-  const corB = put(g, new THREE.Mesh(M.plane, M.corridor), (WING.corB[0] + WING.corB[1]) / 2, 0.005, (WING.corA[1] + Z1) / 2); corB.scale.set(WING.corB[1] - WING.corB[0], 1, Z1 - WING.corA[1]);
+  const theme = themeOf(f.n), aw = X1 - X0, ad = WING.corA[1] - WING.corA[0], bw = WING.corB[1] - WING.corB[0], bd = Z1 - WING.corA[1];
+  const corA = put(g, new THREE.Mesh(M.plane, corridorMat(theme, aw, ad)), CX, 0.005, (WING.corA[0] + WING.corA[1]) / 2); corA.scale.set(aw, 1, ad);
+  const corB = put(g, new THREE.Mesh(M.plane, corridorMat(theme, bw, bd)), (WING.corB[0] + WING.corB[1]) / 2, 0.005, (WING.corA[1] + Z1) / 2); corB.scale.set(bw, 1, bd);
   // the building's glass: tinted on the far sides, clear on the near ones (per room, below), mullions all round
   pane(g, M.far, X0, Z0, X1, Z0, INNER); pane(g, M.far, X0, Z0, X0, WING.corA[1], INNER);
   const near = [pane(g, M.clear, X1, Z0, X1, WING.corA[1], INNER), pane(g, M.clear, WING.corB[0], Z1, WING.corB[1], Z1, INNER)];
@@ -116,11 +134,11 @@ function buildFloor(f) {
   boxes(g, M.low, [[DEPTS[0].x1 - DEPTS[0].x0, 1.3, 0.14, (DEPTS[0].x0 + DEPTS[0].x1) / 2, 0.65, WING.split], [DEPTS[1].x1 - DEPTS[1].x0, 1.3, 0.14, (DEPTS[1].x0 + DEPTS[1].x1) / 2, 0.65, WING.split]]);
   // the desks of all four rooms; screens, chairs, people and shadows as one draw each
   const all = DESKS.flat();
-  boxes(g, M.desk, all.map((d) => [1.5, 0.05, 0.74, d.x, 0.75, d.z, d.ry]));
-  boxes(g, M.ped, all.map((d) => [0.4, 0.7, 0.55, d.x + 0.45 * Math.cos(d.ry), 0.35, d.z - 0.45 * Math.sin(d.ry) + 0.04 * Math.cos(d.ry), d.ry]));
-  boxes(g, M.mon, all.map((d) => [0.6, 0.38, 0.04, d.x, 1.02, d.z + 0.24 * Math.cos(d.ry), d.ry]));
+  const simple = [boxes(g, M.desk, all.map((d) => [1.5, 0.05, 0.74, d.x, 0.75, d.z, d.ry]))];
+  simple.push(boxes(g, M.ped, all.map((d) => [0.4, 0.7, 0.55, d.x + 0.45 * Math.cos(d.ry), 0.35, d.z - 0.45 * Math.sin(d.ry) + 0.04 * Math.cos(d.ry), d.ry])));
+  simple.push(boxes(g, M.mon, all.map((d) => [0.6, 0.38, 0.04, d.x, 1.02, d.z + 0.24 * Math.cos(d.ry), d.ry])));
   const screens = boxes(g, M.screen, all.map((d) => [0.54, 0.32, 0.01, d.x, 1.02, d.z + 0.215 * Math.cos(d.ry), d.ry]), true);
-  boxes(g, M.chair, all.flatMap((d) => [[0.54, 0.09, 0.52, d.cx, 0.45, d.cz, d.ry], [0.5, 0.56, 0.09, d.cx - 0.27 * Math.sin(d.ry), 0.8, d.cz - 0.27 * Math.cos(d.ry), d.ry]]));
+  simple.push(screens, boxes(g, M.chair, all.flatMap((d) => [[0.54, 0.09, 0.52, d.cx, 0.45, d.cz, d.ry], [0.5, 0.56, 0.09, d.cx - 0.27 * Math.sin(d.ry), 0.8, d.cz - 0.27 * Math.cos(d.ry), d.ry]])));
   const bodies = new THREE.InstancedMesh(M.body, M.bean, all.length), heads = new THREE.InstancedMesh(M.head, M.skin, all.length);
   const shades = new THREE.InstancedMesh(M.body, M.shade, all.length), hits = new THREE.InstancedMesh(M.box, M.hit, all.length);
   for (const im of [bodies, heads, shades, hits]) { im.count = 0; g.add(im); }
@@ -140,7 +158,8 @@ function buildFloor(f) {
   face.userData.own = true;
   // the floor's name, seen from outside
   const lab = el('div', 'tw-floor-tag'); const label = new CSS2DObject(lab); label.position.set(X1 + 0.4, INNER * 0.55, Z1 + 0.4); g.add(label);
-  const F = { n: f.n, y, g, near, rail, rooms: [], screens, bodies, heads, shades, hits, roomHits, floorHit, dir, dirM, face, label, lab, hitInfo: [] };
+  // (the simple desks and chairs: what the floor shows until you are on it, when world/tower-floor.js furnishes it)
+  const F = { n: f.n, y, g, theme, simple, near, rail, rooms: [], screens, bodies, heads, shades, hits, roomHits, floorHit, dir, dirM, face, label, lab, hitInfo: [] };
   F.rooms = DEPTS.map((d, i) => roomView(F, i));
   for (const R of F.rooms) near.push(...R.fronts);
   tower.add(g);
@@ -150,14 +169,22 @@ function buildFloor(f) {
 // a room on a floor: its carpet, glass, smart-glass lid, its share of the building's front, its name tag
 function roomView(F, i) {
   const d = DEPTS[i], g = F.g;
-  const carpetM = new THREE.MeshStandardMaterial({ color: '#5E6B7D', roughness: 0.95, emissive: '#FFD9A0', emissiveIntensity: 0 });
+  const carpetM = new THREE.MeshStandardMaterial({ color: '#5E6B7D', map: tiled('carpet', () => speckTex('#F2F2F2', 3000, 0.08), d.x1 - d.x0, d.z1 - d.z0, 0.8), roughness: 0.95, emissive: '#FFD9A0', emissiveIntensity: 0 });
   const carpet = put(g, new THREE.Mesh(M.plane, carpetM), (d.x0 + d.x1) / 2, 0.004, d.cz); carpet.scale.set(d.x1 - d.x0, 1, d.z1 - d.z0);
-  const glass = ROOM_GLASS[i].map(([ax, az, bx, bz]) => pane(g, M.clear, ax, az, bx, bz, GLASS_H));
+  const glass = ROOM_GLASS[i].flatMap((seg) => withDoor(d, seg)).map(([ax, az, bx, bz]) => pane(g, M.clear, ax, az, bx, bz, GLASS_H));
   const lid = put(g, new THREE.Mesh(M.plane, M.frost), (d.x0 + d.x1) / 2, GLASS_H, d.cz); lid.scale.set(d.x1 - d.x0, 1, d.z1 - d.z0); lid.renderOrder = 3; lid.visible = false;
   const frontM = new THREE.MeshStandardMaterial({ color: '#BFD8E6', transparent: true, opacity: 0.18, roughness: 0.08, metalness: 0.1, depthWrite: false, emissive: '#FFD9A0', emissiveIntensity: 0 });
   const fronts = FRONTS[i].map(([ax, at, a0, a1]) => (ax === 'x' ? pane(g, frontM, at, a0, at, a1, INNER) : pane(g, frontM, a0, at, a1, at, INNER)));
   const tagEl = el('div', 'tw-tag'), tag = new CSS2DObject(tagEl); tag.position.set((d.x0 + d.x1) / 2, GLASS_H + 0.5, d.cz); g.add(tag);
   return { i, room: null, key: '', carpetM, glass, lid, frontM, fronts, tag, tagEl, extra: 0 };
+}
+
+// a room's glass side, with a doorway (1.2 m) where the room's door is on it
+function withDoor(d, [ax, az, bx, bz]) {
+  const { side, at } = d.door;
+  const on = side === 'n' ? az === bz && az === d.z0 : ax === bx && ax === (side === 'e' ? d.x1 : d.x0);
+  if (!on) return [[ax, az, bx, bz]];
+  return az === bz ? [[Math.min(ax, bx), az, at - 0.6, az], [at + 0.6, az, Math.max(ax, bx), az]] : [[ax, Math.min(az, bz), ax, at - 0.6], [ax, at + 0.6, ax, Math.max(az, bz)]];
 }
 
 function buildShell(n) {
@@ -171,18 +198,11 @@ function buildShell(n) {
   block(cab, M.cab, sw - 0.25, 0.08, sd - 0.2, 0, 0.04, 0); block(cab, M.cab, sw - 0.25, 0.08, sd - 0.2, 0, 2.36, 0);
   block(cab, M.cab, 0.06, 2.3, sd - 0.2, -(sw - 0.25) / 2, 1.2, 0); block(cab, M.cab, 0.06, 2.3, sd - 0.2, (sw - 0.25) / 2, 1.2, 0);
   block(cab, M.cabLight, sw - 0.5, 0.02, sd - 0.5, 0, 2.31, 0);
-  // the roof: a parapet round it and the team's name, lit at night
+  // the roof: a parapet round it, the machines on it
   roof = new THREE.Group(); roof.position.y = top; g.add(roof);
   block(roof, M.slab, X1 - X0 + 0.3, 0.3, Z1 - Z0 + 0.3, CX, -0.15, CZ);
   boxes(roof, M.slab, [[X1 - X0 + 0.3, 0.6, 0.15, CX, 0.3, Z0 - 0.08], [X1 - X0 + 0.3, 0.6, 0.15, CX, 0.3, Z1 + 0.08], [0.15, 0.6, Z1 - Z0 + 0.3, X0 - 0.08, 0.3, CZ], [0.15, 0.6, Z1 - Z0 + 0.3, X1 + 0.08, 0.3, CZ]]);
   boxes(roof, M.column, [[2.4, 1.2, 1.6, X0 + 3, 0.6, Z0 + 2.5], [1.6, 0.9, 1.6, X0 + 6.5, 0.45, Z0 + 2.5], [sw + 0.4, 1.4, sd + 0.4, scx, 0.7, scz]]);
-  const sign = canvasPlate(1024, 220);
-  sign.g.clearRect(0, 0, 1024, 220); sign.g.fillStyle = '#F3EFE8'; sign.g.font = `800 150px ${FONT}`; sign.g.textAlign = 'center'; sign.g.textBaseline = 'middle';
-  fitText(sign.g, teamName || tr('team.open'), 980); sign.g.fillText(teamName || tr('team.open'), 512, 112); sign.tex.needsUpdate = true;
-  const signM = new THREE.MeshBasicMaterial({ map: sign.tex, transparent: true, toneMapped: false, side: THREE.DoubleSide });
-  const s = put(roof, new THREE.Mesh(new THREE.PlaneGeometry(9, 1.95), signM), CX + 3, 1.7, Z1 - 3); s.rotation.y = Math.PI / 4;
-  boxes(roof, M.mull, [[0.1, 0.8, 0.1, CX + 3 - 2.6, 0.4, Z1 - 3 + 2.6], [0.1, 0.8, 0.1, CX + 3 + 2.6, 0.4, Z1 - 3 - 2.6]]);
-  roof.userData.disposeMe = [sign.tex, signM];
 }
 
 function dispose(o) {
@@ -197,7 +217,7 @@ function dispose(o) {
 
 /* ---------- filling it in ---------- */
 function rebuild(fl) {
-  clearChars();
+  clearChars(); dropDetail();
   if (tower) { dispose(tower); scene.remove(tower); }
   tower = new THREE.Group(); tower.name = 'team-tower'; tower.visible = view.mode !== 'mine'; tower.userData.noMerge = true;
   scene.add(tower);
@@ -229,6 +249,7 @@ function fillFloor(F) {
     const seats = r && seesIn(st) ? seatsOf.get(r.member.id) || new Map() : new Map();
     const bySeat = new Map(); for (const p of (r?.people || [])) { const k = seats.get(p.id); if (k !== undefined) bySeat.set(k, p); }
     const shadows = st === 'closed' ? silhouettes(r) : 0;
+    R.bySeat = bySeat; R.shadows = shadows;
     DESKS[R.i].forEach((dk, k) => {
       const idx = R.i * SEATS + k, p = bySeat.get(k);
       F.screens.setColorAt(idx, p ? screenColor[p.status] || screenColor.rest : k < shadows ? screenColor.rest : screenColor.none);
@@ -250,6 +271,7 @@ function fillFloor(F) {
   const names = F.rooms.filter((R) => R.room).map((R) => R.room.member.name);
   F.lab.replaceChildren(el('b', null, tr('team.floor', { n: F.n })), el('span', null, names.length ? names.join(' · ') : tr('team.lift.emptyFloor')));
   nightShown = null;
+  showDetail(F);
 }
 
 function drawDirectory(F) {
@@ -276,16 +298,19 @@ export function syncTower(t) {
   const rooms = t?.inTeam ? t.rooms || [] : [];
   // in a team with nobody else in it yet: one floor of empty rooms, so there is a building to look at
   const theirs = floorsOf(rooms), fl = t?.inTeam && !theirs.length ? [{ n: 1, rooms: [] }] : theirs;
-  if (!fl.length) { if (tower) { clearChars(); dispose(tower); scene.remove(tower); tower = null; floors = []; layoutKey = ''; } if (view.mode !== 'mine') goTower('mine'); return; }
+  if (!fl.length) { if (tower) { clearChars(); dropDetail(); dispose(tower); scene.remove(tower); tower = null; floors = []; layoutKey = ''; } if (view.mode !== 'mine') goTower('mine'); return; }
   materials();
-  const key = fl.map((f) => f.rooms.map((r) => r.member.id).join(',')).join('|') + `#${t.team?.name || ''}`;
-  teamName = t.team?.name || '';
+  const key = fl.map((f) => f.rooms.map((r) => r.member.id).join(',')).join('|');
   if (key !== layoutKey) { layoutKey = key; rebuild(fl); }
   for (const f of fl) {
     const F = floors[f.n - 1];
     F.rooms.forEach((R, i) => {
       const r = f.rooms[i] || null; R.room = r;
-      if (r && seesIn(stateOf(r))) { const s = seatPeople(r.people, seatsOf.get(r.member.id)); seatsOf.set(r.member.id, s.seats); R.extra = s.extra; } else R.extra = 0;
+      if (r && seesIn(stateOf(r))) {
+        const s = seatPeople(r.people, seatsOf.get(r.member.id)); seatsOf.set(r.member.id, s.seats); R.extra = s.extra;
+        // whoever is resting may go and sit in the room's break corner (on the floor you are on)
+        const b = seatPeople((r.people || []).filter((p) => p.status === 'rest' && s.seats.has(p.id)), breakOf.get(r.member.id), BREAK_SEATS); breakOf.set(r.member.id, b.seats);
+      } else R.extra = 0;
     });
     fillFloor(F);
   }
@@ -294,6 +319,35 @@ export function syncTower(t) {
 }
 export const towerFloors = () => floors.length;
 export const towerRoom = (floor, i) => floors[floor - 1]?.rooms[i]?.room || null;
+
+/* ---------- the floor you are on, in full (world/tower-floor.js) ---------- */
+function dropDetail() {
+  if (!detail) return;
+  detail.D.dispose(); for (const o of detail.F.simple) o.visible = true; detail = null;
+}
+function ensureDetail() {
+  const F = view.mode === 'floor' ? floors[view.floor - 1] : null;
+  if (detail && detail.F === F) return;
+  dropDetail();
+  if (!F) return;
+  const accents = F.rooms.map((R) => (R.room ? accentOf(R.room.member.id) : null));
+  detail = { F, D: furnishFloor(F, F.n, F.theme, DESKS, accents), plaques: [] };
+  for (const o of F.simple) o.visible = false;
+  showDetail(F);
+}
+// the furnished floor follows the rooms: door plaques, screens, lamps
+function showDetail(F) {
+  if (detail?.F !== F) return;
+  for (const R of F.rooms) {
+    const r = R.room, st = r ? stateOf(r) : 'empty', key = r ? `${r.member.name}|${st}` : 'empty', DR = detail.D.rooms[R.i];
+    if (detail.plaques[R.i] !== key) {
+      detail.plaques[R.i] = key;
+      if (r) DR.plaque(r.member.name, stText(st), st === 'offline'); else DR.plaque(tr('team.tower.free'), tr('team.floor', { n: F.n }), true);
+    }
+    const mid = r?.member.id;
+    detail.D.show(R.i, { lit: !!R.lit, bySeat: R.bySeat || new Map(), shadows: R.shadows || 0, atDesk: (p) => { const c = chars.get(`${mid}/${p.id}`); return !c || c.st === 'desk'; } });
+  }
+}
 
 /* ---------- looking at it ---------- */
 function clearChars() {
@@ -307,7 +361,8 @@ function syncChars() {
   if (F) for (const R of F.rooms) {
     const r = R.room; if (!r || !seesIn(stateOf(r))) continue;
     const seats = seatsOf.get(r.member.id) || new Map();
-    for (const p of r.people || []) { const k = seats.get(p.id); if (k !== undefined) want.set(`${r.member.id}/${p.id}`, { R, r, p, k }); }
+    const brk = breakOf.get(r.member.id) || new Map();
+    for (const p of r.people || []) { const k = seats.get(p.id); if (k !== undefined) want.set(`${r.member.id}/${p.id}`, { R, r, p, k, b: detail?.F === F && p.status === 'rest' ? brk.get(p.id) : undefined }); }
   }
   for (const [key, c] of chars) if (!want.has(key) || want.get(key).k !== c.seat || c.floor !== view.floor) { c.root.removeFromParent(); dispose(c.root); chars.delete(key); }
   for (const [key, w] of want) {
@@ -315,12 +370,14 @@ function syncChars() {
     if (!c) {
       const h = hash(key), { root, P } = makeChibi({ name: key, shirt: shirtOf(w.r.member.id, w.p.id), hair: HAIRS[h % HAIRS.length], pants: PANTS[(h >> 3) % PANTS.length], look: state.LOOK }, 1);
       root.traverse((o) => { o.castShadow = false; o.receiveShadow = false; o.userData.tw = { kind: 'person', floor: view.floor, i: w.R.i, member: w.r.member.id, person: w.p.id }; });
-      const dk = DESKS[w.R.i][w.k]; root.position.set(dk.cx, 0, dk.cz); root.rotation.y = dk.ry;
+      // at their desk, or already in the break corner when you arrive while they rest
+      const dk = DESKS[w.R.i][w.k], s = w.b !== undefined ? roomPlan(w.R.i).seats[w.b] : null;
+      root.position.set(s ? s.x : dk.cx, 0, s ? s.z : dk.cz); root.rotation.y = s ? s.ry : dk.ry;
       F.g.add(root);
-      c = { root, P, seat: w.k, floor: view.floor, seed: (h % 1000) / 100, anim: 'type' };
+      c = { root, P, seat: w.k, i: w.R.i, floor: view.floor, seed: (h % 1000) / 100, anim: 'type', st: s ? 'break' : 'desk', brk: w.b, leaveAt: 0 };
       chars.set(key, c);
     }
-    c.anim = ANIM[w.p.status] || 'type';
+    c.anim = ANIM[w.p.status] || 'type'; c.want = w.b;
   }
   // the simple figures stand in for whoever has a character now
   for (const G of floors) { G.bodies.visible = G.heads.visible = !(F && G === F); }
@@ -340,6 +397,7 @@ function applyView() {
   }
   if (roof) roof.visible = m === 'all';
   if (columns) columns.visible = m === 'all';   // (inside a floor they only stick out)
+  ensureDetail();
   syncChars();
 }
 
@@ -377,23 +435,55 @@ export function pickTower(ray) {
     return hit ? hit.object.userData.tw : null;
   }
   const F = floors[view.floor - 1]; if (!F) return null;
-  const objs = [F.hits, ...F.roomHits];
+  // the people are characters on this floor (they may be in the break corner, not at their desk)
+  const objs = [...F.roomHits];
   for (const c of chars.values()) objs.push(c.root);
-  const hit = ray.intersectObjects(objs, true)[0];
-  if (!hit) return null;
-  if (hit.object === F.hits) return F.hitInfo[hit.instanceId] || null;
-  return hit.object.userData.tw || null;
+  const hit = ray.intersectObjects(objs, true)[0], info = hit?.object.userData.tw || null;
+  // something to click (a plant, the coffee machine), unless someone stands in front of it
+  const pp = detail?.F === F ? detail.D.pick(ray.ray) : null;
+  if (pp && (!info || info.kind === 'room' || pp.d < hit.distance - 0.3)) return { kind: 'prop', floor: F.n, prop: pp.prop };
+  if (info) return info;
+  // anywhere else on this floor (a corridor, a wall): still the building, not your own office under it
+  const r = ray.ray, k = r.direction.y ? (F.y - r.origin.y) / r.direction.y : -1, x = r.origin.x + r.direction.x * k, z = r.origin.z + r.direction.z * k;
+  return k > 0 && x > X0 && x < X1 && z > Z0 && z < Z1 ? { kind: 'none', floor: F.n } : null;
 }
 
 /* ---------- every frame ---------- */
+const WALK = 1.15;   // m/s
+const SIT_UP = { studio: 0.08, garden: -0.04, library: 0.06 };   // a sofa seat is higher than an office chair, a bean bag lower
+// someone resting walks to the break corner after a moment, and back to the desk when they start again
+function walk(c, dt, t) {
+  const dk = DESKS[c.i][c.seat], seats = roomPlan(c.i).seats;
+  if (c.st === 'desk') {
+    if (c.want === undefined || !detail) { c.leaveAt = 0; return; }
+    if (!c.leaveAt) { c.leaveAt = t + 1.5 + (c.seed % 6); return; }
+    if (t < c.leaveAt) return;
+    c.brk = c.want; c.path = pathTo(c.i, dk, seats[c.brk]); c.seg = 0; c.st = 'out'; c.leaveAt = 0;
+  } else if (c.st === 'break') {
+    if (c.want === c.brk) return;
+    c.path = pathTo(c.i, dk, seats[c.brk]).reverse(); c.seg = 0; c.st = 'back';
+  }
+  let left = dt * WALK;
+  while (left > 0 && c.seg < c.path.length - 1) {
+    const [bx, bz] = c.path[c.seg + 1], dx = bx - c.root.position.x, dz = bz - c.root.position.z, dist = Math.hypot(dx, dz);
+    if (dist > 1e-4) c.root.rotation.y = Math.atan2(dx, dz);
+    if (dist <= left) { c.root.position.x = bx; c.root.position.z = bz; c.seg++; left -= dist; } else { c.root.position.x += (dx / dist) * left; c.root.position.z += (dz / dist) * left; left = 0; }
+  }
+  if (c.seg >= c.path.length - 1) {
+    if (c.st === 'out') { c.st = 'break'; c.root.rotation.y = seats[c.brk].ry; } else { c.st = 'desk'; c.root.rotation.y = dk.ry; }
+  }
+}
 export function updateTower(dt, t) {
   if (!tower || view.mode === 'mine') return;
   // your own office's things need your own floor: picking a session or walking in takes you back down
   if (state.selectedId || state.photo) { goTower('mine'); return; }
   for (const c of chars.values()) {
-    const pose = chibiPose(c.P, c.anim, t + c.seed, { sit: true, blink: ((t + c.seed) % 4.2) < 0.12 });
-    c.root.position.y = applyChibiPose(c.P, pose, dt);
+    walk(c, dt, t);
+    const moving = c.st === 'out' || c.st === 'back', anim = moving ? 'walk' : c.st === 'break' ? 'coffee' : c.anim;
+    const pose = chibiPose(c.P, anim, t + c.seed, { sit: !moving, blink: ((t + c.seed) % 4.2) < 0.12 });
+    c.root.position.y = applyChibiPose(c.P, pose, dt) + (c.st === 'break' ? SIT_UP[detail?.F.theme] || 0 : 0);
   }
+  if (detail) detail.D.update(dt, t);
   // the lift glides to the floor you are on (the ground: it waits at floor 1)
   const goal = floorY(view.mode === 'floor' ? view.floor : 1);
   if (cab && Math.abs(goal - cabY) > 0.005) { cabY += (goal - cabY) * Math.min(1, dt * 2.2); cab.position.y = cabY; }
@@ -419,6 +509,16 @@ export function setup() {
         const v = new THREE.Vector3(dk.cx, floorY(floor) + 1.0, dk.cz).project(camera), r = document.getElementById('stage').getBoundingClientRect();
         return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
       },
+      // the furnished floor: its look, what can be clicked (and where it is on screen), who is where, draw calls
+      get detail() {
+        if (!detail) return null;
+        const r = document.getElementById('stage').getBoundingClientRect(), at = (p) => { const v = new THREE.Vector3(); p.box.getCenter(v); v.project(camera); return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height }; };
+        return { floor: detail.F.n, theme: detail.F.theme, props: detail.D.props.map((p) => ({ id: p.id, kind: p.kind, ...at(p) })), chars: [...chars.values()].map((c) => c.st), meshes: drawn(detail.D.g) };
+      },
+      prop(id) { detail?.D.props.find((p) => p.id === id)?.act(); },
     };
+    const drawn = (root) => { let n = 0; root.traverseVisible((o) => { if (o.isMesh) n++; }); return n; };
+    window.__office.tower.drawn = () => drawn(scene);
+    window.__office.tower.memory = () => ({ ...renderer.info.memory });
   }, 0);
 }

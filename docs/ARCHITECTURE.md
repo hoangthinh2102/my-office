@@ -64,7 +64,8 @@ the shared object in `core/state.js`; everything else is an ordinary import.
 
 Things to know before changing the 3D:
 
-* **Draw calls are the budget.** Static meshes are merged into one mesh per material at start (`core/optimize.js`);
+* **Draw calls are the budget.** Static meshes are merged into one mesh per material at start (`core/optimize.js`, with `scene/merge.js`; a team
+  floor merges its own when it is built, `world/tower-floor.js`);
   characters merge their joints' meshes (`people/chibi-rig.js`, `mergeRig`). Anything that moves, blinks or changes
   colour must be flagged `userData.noMerge` (or `dynamic`) or it will be frozen into the merge.
 * **Never put a flat decal exactly on another surface**: it flickers when zooming. Keep a few millimetres in front, or
@@ -97,7 +98,7 @@ engine switches to demo mode and talks to no API.
 | `audio/sfx.js` | 69 | Sounds, synthesized in the browser. |
 | `core/env.js` | 72 | Page-wide basics: DOM helpers, the floor plan choice, replay clock, office clock, season, formatting. |
 | `core/loop.js` | 224 | The render loop and its frame budget. |
-| `core/optimize.js` | 141 | Merging static meshes into fewer draw calls, then starting. |
+| `core/optimize.js` | 106 | Merging static meshes into fewer draw calls, then starting. |
 | `core/schedule.js` | 36 | Office hours, set by the director (the director's office → Office hours; kept by the server, server/company.mjs) and lived by everyone: arriving in the morning, breakfast at the pantry until work starts, lunch, the midday nap, the afternoon coffee, packing up and going home when work ends. |
 | `core/state.js` | 3 | Values that more than one module assigns (the clock, the selection, mode switches…), on one shared object so any module can change them. |
 | `demo/demo-team.js` | 81 | Demo mode's team (team mode's building, ui/team.js): nine pretend teammates on three floors, some rooms open, some closed (Vy has let you into hers for a while), one person offline, someone knocking on your door, and work going on in the rooms you can see. |
@@ -145,6 +146,7 @@ engine switches to demo mode and talks to no API.
 | `replay/replay.js` | 162 | Replay and recording. |
 | `replay/timeline.js` | 193 | The timeline: one lane per session. |
 | `scene/blocks.js` | 32 | Building blocks: materials, rounded boxes, cylinders, rugs, canvas textures. |
+| `scene/merge.js` | 47 | Static meshes merged into fewer draw calls, every part keeping its colour (core/optimize.js, world/tower-floor.js). |
 | `scene/lights.js` | 35 | Sun, sky light and the room lamps (per-room night lighting on the company floor). |
 | `scene/quality.js` | 77 | Graphics quality: Auto (the default), Low, Medium or High, each viewer's own choice (Settings → Display). |
 | `scene/renderer.js` | 91 | Renderer, cameras, orbit controls, post-processing and environment light. |
@@ -175,7 +177,7 @@ engine switches to demo mode and talks to no API.
 | `ui/team-join.js` | 91 | Team mode without the command line: an admin makes an invite link in the building panel, and someone not in a team yet joins with one in Settings → More (markup: TeamModal.tsx, SettingsPanel.tsx). |
 | `ui/team-members.js` | 85 | Team mode's members, in the building panel: who is in the team and who is an admin; admins make others admins and take members (never another admin) out, an admin steps down only themselves. |
 | `ui/skills.js` | 142 | Settings → Skills: this computer's skills and plugins; add one from a folder of yours (linked or copied), search a marketplace and install, remove with a second click (server/skills.mjs, /api/skills). |
-| `ui/team-lift.js` | 123 | Team mode's lift (headquarters plan only; markup: src/components/office/Stage.tsx #tw-lift, #tw-card): the buttons down the stage's right edge that choose what you look at in the building (world/team-tower.js): the whole building, a floor, or your own floor. |
+| `ui/team-lift.js` | 131 | Team mode's lift (headquarters plan only; markup: src/components/office/Stage.tsx #tw-lift, #tw-card): the buttons down the stage's right edge that choose what you look at in the building (world/team-tower.js): the whole building, a floor, or your own floor. |
 | `ui/team.js` | 154 | Team mode's building (the building button in the top bar; markup: src/components/office/TeamModal.tsx): your own room, which you can open, close or pause from this computer, and everyone else's rooms floor by floor, view only. |
 | `ui/timelapse.js` | 156 | A 15-second clip of the office to share: square (1080 × 1080) for a feed or vertical (1080 × 1920) for Reels, TikTok and Shorts, the camera turning slowly round the floor, people at four times their pace, the day running into the evening (a clock in the corner from 8:00 to 23:00, the lights coming on at six), a title at the start and the day's numbers over the last two and a half seconds, with an original lo-fi tune under it (clip-music.js; it can be turned off). |
 | `ui/tips.js` | 115 | The first visit: a short tour of what you can click. |
@@ -219,7 +221,7 @@ engine switches to demo mode and talks to no API.
 | `world/models.js` | 77 | 3D models of your own in the office: glTF / GLB files (made with an image-to-3D model such as NVIDIA's on Hugging Face, TRELLIS, Hunyuan3D, or bought, or from Blender) dropped into public/assets/models/ and listed in public/assets/models/manifest.json. |
 | `world/pro/floor.js` | 341 | The company floor: rooms, partitions and furniture. |
 | `world/pro/pieces.js` | 142 | Company floor building pieces: floor finishes, walls, glass, chairs, dining sets. |
-| `world/pro/wing.js` | 134 | Headquarters' wing: in front of the company floor, a corridor along it, a corridor down the middle and four department rooms of two pods each (the desks, pods' screens and carpets come from the shared code). |
+| `world/pro/wing.js` | 143 | Headquarters' wing: in front of the company floor, a corridor along it, a corridor down the middle and four department rooms of two pods each (the desks, pods' screens and carpets come from the shared code). |
 | `world/props/aquarium.js` | 44 | The aquarium. |
 | `world/props/arcade.js` | 62 | The arcade cabinet and its little game. |
 | `world/props/billiards.js` | 124 | The pool table (company floor), on the lounge's right side between the sofa and the arcade: a 7-foot table (green cloth with its spots, cushions, walnut rails inlaid with pearl diamonds, six leather pockets, turned legs), a rug under it, chalk on the rail, and a round cue stand by the arcade. |
@@ -240,6 +242,7 @@ engine switches to demo mode and talks to no API.
 | `world/props/vacuum.js` | 33 | The robot vacuum. |
 | `world/room-update.js` | 176 | Room lights, particles, the rocket, the clock and day / night. |
 | `world/screens.js` | 100 | What each desk's screens show: the editor while it edits, a terminal for commands, a browser for the web, code with the match highlighted while it reads or searches, a chat while it thinks, a permission dialog while it waits for you, a screensaver while it naps. |
-| `world/team-tower.js` | 423 | Team mode's building in 3D (headquarters plan only; docs/features/team-mode.md): every other member's room on a floor above the wing, four to a floor (src/shared/team-floors.js), the team's lift at the back. |
+| `world/team-tower.js` | 524 | Team mode's building in 3D (headquarters plan only; docs/features/team-mode.md): every other member's room on a floor above the wing, four to a floor (src/shared/team-floors.js), the team's lift at the back. |
+| `world/tower-floor.js` | 365 | A team floor in full, the one you are on: the wing's desks, plaques, boards and plants, a break corner per room, in one of three looks (studio, garden, library); things to click that react on your screen only. |
 | `world/terrace.js` | 114 | The terrace around the office: tiles, glass railing, bollards, planters, potted plants, seating. |
 | `world/windows.js` | 96 | Windows on the outer walls and the views they show. |

@@ -19,33 +19,40 @@ const ACCENTS = ['#3F7CC4', '#6A8042', '#D97757', '#8C4FA8'];
 const CARPETS = ['#5E6B7D', '#66735C', '#7B6A5E', '#655F7A'];
 const FONT = '"Be Vietnam Pro", system-ui, sans-serif';
 
-// a door plaque that can be redrawn: dark plate, the room's colour down its left edge
-function plaque(i, x, y, z, ry) {
+/** A door plaque that can be redrawn (also a team floor's, world/tower-floor.js): a dark plate, `accent` down its left
+ *  edge. Returns draw(title, sub, dim): dim greys the title (a free room). */
+export function doorPlaque(accent, x, y, z, ry, parent = scene) {
   const c = document.createElement('canvas'); c.width = 512; c.height = 160;
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
-  const draw = (name) => {
-    const g = c.getContext('2d'), n = i + 1;
-    g.fillStyle = '#1E232B'; g.fillRect(0, 0, 512, 160); g.fillStyle = ACCENTS[i]; g.fillRect(0, 0, 14, 160);
+  const draw = (title, sub, dim = false) => {
+    const g = c.getContext('2d');
+    g.fillStyle = '#1E232B'; g.fillRect(0, 0, 512, 160); g.fillStyle = accent; g.fillRect(0, 0, 14, 160);
     g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillStyle = name ? '#F3EFE8' : '#9AA3B0'; g.font = `800 ${name ? 56 : 46}px ${FONT}`;
-    const title = name ? tr('world.dept.name', { name }) : tr('world.dept.free', { n }); fitText(g, title, 456); g.fillText(title, 263, 66);
-    g.fillStyle = '#A9B2C0'; g.font = `600 26px ${FONT}`; g.fillText(name ? tr('world.dept.sub', { n }) : tr('world.dept.freeSub'), 263, 122);
+    g.fillStyle = dim ? '#9AA3B0' : '#F3EFE8'; g.font = `800 ${dim ? 46 : 56}px ${FONT}`;
+    fitText(g, title, 456); g.fillText(title, 263, 66);
+    g.fillStyle = '#A9B2C0'; g.font = `600 26px ${FONT}`; fitText(g, sub, 456); g.fillText(sub, 263, 122);
     tex.needsUpdate = true;
   };
-  draw('');
   const m = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.28), new THREE.MeshBasicMaterial({ map: tex, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
-  m.position.set(x, y, z); m.rotation.y = ry; m.userData.noMerge = true; scene.add(m);
+  m.position.set(x, y, z); m.rotation.y = ry; m.userData.noMerge = true; parent.add(m);
+  return draw;
+}
+// room i's plaque on the wing: the project's name, or "Department n" while the room is free
+function plaque(i, x, y, z, ry) {
+  const draw = doorPlaque(ACCENTS[i], x, y, z, ry), n = i + 1;
+  const show = (name) => draw(name ? tr('world.dept.name', { name }) : tr('world.dept.free', { n }), name ? tr('world.dept.sub', { n }) : tr('world.dept.freeSub'), !name);
+  show('');
   let shown = '';
-  DEPT_SIGNS[i] = (name) => { if (name === shown) return; shown = name; draw(name); };
+  DEPT_SIGNS[i] = (name) => { if (name === shown) return; shown = name; show(name); };
 }
 
 // a whiteboard with three columns of sticky notes (on a wall, or on two legs when `stand` is set)
-function sprintBoard(i, x, y, z, ry, w = 1.3, h = 0.8, stand = false) {
-  const g0 = new THREE.Group(); g0.position.set(x, 0, z); g0.rotation.y = ry; scene.add(g0);
+export function sprintBoard(i, x, y, z, ry, w = 1.3, h = 0.8, stand = false, parent = scene) {
+  const g0 = new THREE.Group(); g0.position.set(x, 0, z); g0.rotation.y = ry; parent.add(g0);
   const tex = canvasTex(512, Math.round((512 * h) / w), (g, cw, ch) => {
     g.fillStyle = '#FBFBF8'; g.fillRect(0, 0, cw, ch);
     g.fillStyle = '#1E232B'; g.font = `800 30px ${FONT}`; g.fillText(tr('world.dept.board'), 18, 40);
-    g.fillStyle = ACCENTS[i]; g.fillRect(18, 52, 120, 5);
+    g.fillStyle = ACCENTS[i % 4]; g.fillRect(18, 52, 120, 5);
     const cols = tr('world.dept.cols', null, 'list'), colW = (cw - 36) / 3;
     cols.forEach((t, k) => {
       const cx = 18 + k * colW;
@@ -66,15 +73,17 @@ function sprintBoard(i, x, y, z, ry, w = 1.3, h = 0.8, stand = false) {
     put(g0, rbox(0.04, y - h / 2, 0.04, metal, 0.01), sx * (w / 2 - 0.05), (y - h / 2) / 2, 0);
     put(g0, rbox(0.06, 0.03, 0.42, metal, 0.01), sx * (w / 2 - 0.05), 0.015, 0);
   }
+  return g0;
 }
 
 // a low cabinet along a wall, with books and a frame on it
-function credenza(x, z, ry = 0) {
-  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; scene.add(g);
+export function credenza(x, z, ry = 0, parent = scene) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; parent.add(g);
   put(g, rbox(1.8, 0.68, 0.48, mat('#E4DFD6', { roughness: 0.6 }), 0.02), 0, 0.34, 0);
   for (const sx of [-0.6, 0, 0.6]) put(g, rbox(0.56, 0.56, 0.02, mat('#D6D0C5', { roughness: 0.6 }), 0.01), sx, 0.36, 0.245);
   put(g, rbox(1.84, 0.04, 0.52, woodMid, 0.01), 0, 0.7, 0);
-  trinket('books', x - 0.5, 0.72, z, 0.2); trinket('frame', x + 0.45, 0.72, z, -0.15);
+  trinket('books', -0.5, 0.72, 0, 0.2, g); trinket('frame', 0.45, 0.72, 0, -0.15, g);
+  return g;
 }
 
 function buildWing() {

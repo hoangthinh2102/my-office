@@ -110,8 +110,8 @@ export function chairUph(x, z, face, color, scale = 1) {   // an upholstered cha
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) put(c, cyl(0.022, 0.018, 0.36, woodDark, 6), sx * 0.22, 0.18, sz * 0.2);
   return c;
 }
-export function armchair(x, z, face, color) {   // a deep reading chair
-  const c = new THREE.Group(); c.position.set(x, 0, z); c.rotation.y = face; scene.add(c);
+export function armchair(x, z, face, color, parent = scene) {   // a deep reading chair
+  const c = new THREE.Group(); c.position.set(x, 0, z); c.rotation.y = face; parent.add(c);
   const m = mat(color, { roughness: 0.9 });
   put(c, rbox(0.86, 0.3, 0.78, m, 0.1), 0, 0.3, 0);
   put(c, rbox(0.76, 0.12, 0.62, mat(tint(color, 0.2), { roughness: 0.9 }), 0.05), 0, 0.5, 0.06);

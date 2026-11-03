@@ -110,8 +110,8 @@ Chỉ ở kiểu văn phòng **Tập đoàn** (`hq`); các kiểu khác chỉ c�
 
 - **Ba cách xem** (thang máy bên phải sân khấu):
   - *Tầng của bạn*: văn phòng như cũ, toà nhà không được dựng vào cảnh vẽ (không tốn gì).
-  - *Toàn nhà*: mọi tầng nhìn từ ngoài: mặt kính, đèn sáng ở phòng có người, tên tầng và người trong tầng, tên team
-    trên mái. Bấm vào một tầng để vào tầng đó.
+  - *Toàn nhà*: mọi tầng nhìn từ ngoài: mặt kính, đèn sáng ở phòng có người, tên tầng và người trong tầng (mái không
+    ghi chữ). Bấm vào một tầng để vào tầng đó.
   - *Tầng n*: các tầng phía trên được nhấc đi, nhìn từ trên xuống. Phòng mở: mỗi người một nhân vật ngồi tại bàn (gõ
     phím khi đang làm, giơ tay khi chờ duyệt, cầm cốc khi nghỉ); màn hình bàn đổi màu theo trạng thái. Phòng đóng: kính
     mờ (smart glass) và nắp kính mờ, chỉ thấy bóng người, đúng bằng số người. Offline: tắt đèn, ghế trống.
@@ -122,8 +122,22 @@ Chỉ ở kiểu văn phòng **Tập đoàn** (`hq`); các kiểu khác chỉ c�
   quá 8 người thì nhãn phòng ghi `+n`.
 - **Bấm vào một người** ở phòng khác: thẻ chỉ xem (chức danh · project, đang làm gì, số subagent, "Chỉ xem"). Bấm vào
   phòng đóng: chỉ tên chủ phòng và số người. Không có nút giao việc, duyệt hay nhắn.
-- **Nhẹ máy**: tường, bàn, ghế, người dạng đơn giản, bóng người… mỗi loại một lần vẽ cho cả tầng (instancing). Nhân
-  vật đầy đủ chỉ dựng cho tầng đang xem (tối đa 32), đổi tầng thì dọn. Toà nhà không đổ bóng lên văn phòng.
+- **Tầng đang xem có đồ đầy đủ** (`src/office/world/tower-floor.js`), như cánh phòng ban của bạn: bàn thật (laptop,
+  màn hình phụ, tủ, ghế xoay, đèn bàn, đồ lặt vặt), màn hình hiện đúng việc người ngồi đó đang làm (code, terminal,
+  web, chờ duyệt, màn hình chờ khi nghỉ), biển tên ở cửa phòng (tên người, trạng thái phòng), bảng sprint, cây,
+  góc cà phê và bình nước cạnh thang máy, bảng tên tầng ở đầu hành lang. Phòng có khe cửa ở đúng chỗ cửa của cánh.
+- **Ba kiểu tầng**, lần lượt từ tầng 1 (`themeOf` trong `src/shared/team-floors.js`, ai xem cũng thấy giống nhau):
+  *Studio* (sofa, tủ thấp, ghế băng ở hành lang, sàn hành lang lát gạch), *Khu vườn* (ghế lười, bồn cây, tường rêu,
+  nhiều cây, sàn gỗ sáng), *Thư viện* (ghế bành, đèn đọc sách, kệ sách thấp, bể cá ở hành lang, sàn gỗ tối).
+- **Góc nghỉ** mỗi phòng 2 chỗ (`BREAK_SEATS`): người đang nghỉ (phòng xem được) đứng dậy đi ra ngồi đó với cốc cà
+  phê, làm lại thì đi về bàn. Ai đã có chỗ thì giữ chỗ (`seatPeople`); mở tầng khi họ đang nghỉ thì thấy họ ở góc nghỉ luôn.
+- **Bấm được, chỉ trên màn hình của bạn**: trỏ vào đồ thì có viền sáng và tên (như tầng của bạn); bấm thì cây rung,
+  đèn bật / tắt, máy cà phê bốc hơi, cá bơi nhanh khi cho ăn, sofa / bảng / tủ nảy nhẹ. Không gửi gì lên hub, không
+  đổi gì ở phòng người khác. Bấm vào chỗ trống trên tầng không chạm vào văn phòng của bạn bên dưới.
+- **Nhẹ máy**: các tầng khác (và cả toà nhà nhìn từ ngoài) vẫn là bản đơn giản: tường, bàn, ghế, người, bóng người…
+  mỗi loại một lần vẽ cho cả tầng (instancing). Đồ đầy đủ chỉ dựng cho tầng đang xem, gộp thành vài chục lần vẽ
+  (`src/office/scene/merge.js`), không đổ bóng; rời tầng thì dọn hết. Nhân vật đầy đủ chỉ có ở tầng đang xem (tối đa
+  32). Toà nhà không đổ bóng lên văn phòng.
 - Đang xem toà nhà thì nhãn của văn phòng mình (tên phiên, bong bóng, chip địa điểm) tạm ẩn, camera không tự chạy tới
   phiên cần duyệt. Chọn một phiên của mình (danh sách bên trái) hoặc chụp ảnh thì tự về *Tầng của bạn*.
 - Trong panel, mỗi tầng có nút **Xem 3D**.

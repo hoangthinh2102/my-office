@@ -81,6 +81,28 @@ export default {
     notHq: "The 3D building is in the Headquarters office (Settings → Office).",
     emptyFloor: 'Empty for now: invite your teammates (Building → Invite someone to the team)',
   },
+  // a team floor's furniture (world/tower-floor.js): what pointing at it says; a click plays on your screen only
+  tower: {
+    free: 'Free room',
+    local: 'on your screen only',
+    theme: { studio: 'Studio', garden: 'Garden', library: 'Library' },
+    props: {
+      plant: { name: 'Pot plant', hint: 'Give the leaves a little shake' },
+      board: { name: 'Sprint board', hint: 'Just decoration: the room card shows the real work' },
+      cabinet: { name: 'Low cabinet', hint: 'Give it a little bounce' },
+      sofa: { name: 'Sofa', hint: 'Break corner: whoever is resting comes to sit here' },
+      table: { name: 'Coffee table', hint: 'Give it a little bounce' },
+      beanbag: { name: 'Bean bags', hint: 'Break corner: whoever is resting comes to sit here' },
+      armchair: { name: 'Armchairs', hint: 'Reading corner: whoever is resting comes to sit here' },
+      shelf: { name: 'Bookshelf', hint: 'Give it a little bounce' },
+      planter: { name: 'Planter', hint: 'Give the leaves a little shake' },
+      lamp: { name: 'Floor lamp', hint: 'Switch it on or off' },
+      coffee: { name: 'Coffee corner', hint: 'Make a cup' },
+      cooler: { name: 'Water cooler', hint: 'Pour a cup' },
+      aquarium: { name: 'Aquarium', hint: 'Feed the fish' },
+      bench: { name: 'Bench', hint: 'Give it a little bounce' },
+    },
+  },
   card: { room: "{name}'s room", readOnly: 'View only: this is someone else’s room.' },
   readOnly: 'View only: nobody can give work to another room.',
   // joining and inviting without the command line (src/office/ui/team-join.js)

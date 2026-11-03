@@ -1,12 +1,14 @@
 // Team mode's lift (headquarters plan only; markup: src/components/office/Stage.tsx #tw-lift, #tw-card): the buttons
 // down the stage's right edge that choose what you look at in the building (world/team-tower.js): the whole building,
 // a floor, or your own floor. A click on someone in another room opens a card about them: view only, nothing to do.
+// Things on the floor you are on (a plant, a lamp, the coffee machine) react to a click on your screen only.
 import { state } from '../core/state.js';
 import { $, HQ, el } from '../core/env.js';
 import { icon, TYPE_ICON } from './icons.js';
 import { goTower, onViewHooks, pickTower, syncTower, towerFloors, towerRoom, view } from '../world/team-tower.js';
 import { stateOf } from '../../shared/team-floors.js';
 import { knockBlock } from './team-access.js';
+import { setHoverProp } from '../interact/props.js';
 import { PALETTE, hash } from '../people/workers.js';
 import { drS } from './session-drawer.js';
 import { queueUi } from './activity.js';
@@ -63,13 +65,19 @@ export function towerClick(ray, ev) {
   const hit = pickTower(ray);
   if (!hit) { closeCard(); return false; }
   if (hit.kind === 'floor') { closeCard(); goTower(hit.floor); return true; }
+  if (hit.kind === 'prop') { closeCard(); hit.prop.act(); return true; }
+  if (hit.kind === 'none') { closeCard(); return true; }
   const r = towerRoom(hit.floor, hit.i);
   if (!r) { closeCard(); return true; }
   openCard(hit, r, ev);
   return true;
 }
-/** Hover: is the pointer over something in the building? */
-export const towerHover = (ray) => !!pickTower(ray);
+/** Hover: is the pointer over something in the building? A thing to click gets its outline and name, as on your floor. */
+export function towerHover(ray, ev) {
+  const hit = pickTower(ray);
+  setHoverProp(hit?.kind === 'prop' ? hit.prop : null, ev);
+  return !!hit;
+}
 
 function openCard(hit, r, ev) {
   const st = stateOf(r), p = hit.kind === 'person' ? (r.people || []).find((x) => x.id === hit.person) : null;
@@ -116,7 +124,7 @@ export function setup() {
   addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCard(); });
   // while you look at the building, your own office's labels (names, bubbles, place chips) stay out of the way
   onViewHooks.push((v) => {
-    closeCard(); $('stage-wrap')?.classList.toggle('is-tower', v.mode !== 'mine');
+    closeCard(); setHoverProp(null); $('stage-wrap')?.classList.toggle('is-tower', v.mode !== 'mine');
     if (restored && towerFloors()) save(VIEW_KEY, v.mode === 'floor' ? String(v.floor) : v.mode);   // (remembered for the next visit; not when the floors are gone for a while, offline)
     if (shown) render();
   });
