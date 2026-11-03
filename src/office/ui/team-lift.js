@@ -44,7 +44,7 @@ function render() {
     const inRoom = [0, 1, 2, 3].map((i) => towerRoom(f, i)).filter(Boolean), on = inRoom.filter((r) => stateOf(r) !== 'offline').length;
     const b = btn(String(f), document.createTextNode(String(f)), tr('team.floor', { n: f }), view.mode === 'floor' && view.floor === f);
     if (on) b.append(el('i', 'tw-lift-dot'));
-    b.title = `${tr('team.floor', { n: f })}: ${inRoom.map((r) => r.member.name).join(', ')}`;
+    b.title = `${tr('team.floor', { n: f })}: ${inRoom.length ? inRoom.map((r) => r.member.name).join(', ') : tr('team.lift.emptyFloor')}`;
     rows.push(b);
   }
   rows.push(btn('mine', [icon('home'), el('span', 'tw-lift-l', tr('team.lift.mineShort'))], tr('team.lift.mine'), view.mode === 'mine'));
