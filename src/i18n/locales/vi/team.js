@@ -69,6 +69,8 @@ export default {
     phone: 'Vào team trên máy chạy văn phòng.',
     youAreIn: 'Bạn đang ở team "{team}" với tên {name}.',
     open: 'Mở Toà nhà',
+    filled: 'Đã điền link mời: gõ tên của bạn rồi bấm Vào team.',
+    already: 'Máy này đã ở team "{team}". Mỗi máy ở một team một lúc.',
     joined: 'Bạn đã vào "{team}" với tên {name}. Phòng của bạn đang đóng.',
     failed: 'Không vào được team: {why}',
     err: {

@@ -51,6 +51,8 @@ function showTab(k, focus = false) {
   try { localStorage.setItem('office-settings-tab', k); } catch { /* storage blocked */ }
   if (k === 'people') requestAnimationFrame(drawPortraits);   // drawn once, the first time
 }
+/** Opens Settings on one of its tabs (an invite link opened as ?join=… goes to More → Team). */
+export function openSettings(tab) { togglePop(true); showTab(tab); }
 export function togglePop(open = popLook.hidden) { popLook.hidden = !open; btnLook.setAttribute('aria-expanded', String(open)); if (open) { togglePlan(false); showTab(tabNow); } }
 let popPlan;
 let btnPlan;

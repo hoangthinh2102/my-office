@@ -35,6 +35,12 @@ Sau bước 4 (hub **0.3.1**):
 - mời người ngay trong panel toà nhà (nút **Mời người vào team**, chỉ người tạo team thấy);
 - người chưa vào team dán link mời trong **Cài đặt → Khác → Team** để vào, không cần gõ lệnh.
 
+Chuẩn bị chạy thử (hub **0.3.2**): **chỉ cần gửi link mời**.
+- Mở link bằng trình duyệt ra trang hướng dẫn: tên team, nút **Mở My Office để vào team** (mở
+  `http://localhost:4310/?join=<link>` với link điền sẵn) và **một dòng lệnh cài** (`setup.sh`, đã kèm link).
+- Lệnh `node bin/cli.mjs setup` làm cả lần cài đầu; `node bin/cli.mjs update` lên bản mới.
+- Checklist buổi thử: [docs/team-trial.md](../team-trial.md).
+
 Chưa có: admin. Lộ trình ở cuối file.
 
 ## Cách sử dụng
@@ -126,6 +132,36 @@ Chỉ ở kiểu văn phòng **Tập đoàn** (`hq`); các kiểu khác chỉ c�
 | `POST` | `/api/team/policy` | `{ details: true \| false }` | `{ ok: true, team }` · `{ ok: false, code }` (vd. `not-owner`) |
 
 Cùng điều kiện như `/api/team/room`: loopback, không qua tunnel, cùng origin, JSON.
+
+### Cài một dòng và trang của link mời
+
+**`setup.sh`** (gốc repo; chạy bằng `curl -fsSL …/setup.sh | bash -s -- [--lang vi] [--join <link>] [--name <tên>]`):
+1. Kiểm tra macOS / Linux, git, Node 22, npm. Thiếu gì thì dừng và chỉ cách cài (không tự cài Node).
+2. Thư mục: `MY_OFFICE_DIR`, nếu không thì bản clone đã có ở `~/my-office` hoặc `~/gamota/my-office`, nếu không thì
+   `~/my-office`. Đã có thì `git pull --ff-only` (có thay đổi riêng thì giữ nguyên). Thư mục có sẵn mà không phải My
+   Office thì dừng.
+3. `npm ci`. Bản build cũ hơn code thì xoá để build lại.
+4. `exec node bin/cli.mjs setup "$@"`.
+
+**`node bin/cli.mjs setup`**: đặt ngôn ngữ (`--lang`), kiểm Node 22, `install --service` (hook + chạy nền, build nếu
+chưa có), chờ `/health`, vào team nếu có `--join` (đã ở team thì bỏ qua; link hỏng thì chỉ cảnh báo và mở trang với
+`?join=` để vào lại), mở trang (`--no-open` để không mở).
+
+**`node bin/cli.mjs update [--force]`**: dừng nếu có thay đổi riêng (file đã theo dõi); `git pull --ff-only`; in các
+commit mới; `npm ci` nếu `package-lock.json` đổi; build lại; khởi động lại service **chỉ khi service chạy đúng thư mục
+này**. Commit đã build lưu ở `.next/office-commit`: không có gì mới thì không build.
+
+**Trang của link mời** (`hub/src/invite-page.js`, `GET /j/<team>.<mã>`):
+- tên team (Worker hỏi Durable Object qua action nội bộ `name`, không nằm trong `ACTIONS` nên bên ngoài không gọi được;
+  team không tồn tại thì không ghi gì);
+- không cho biết mã còn dùng được không (chỉ kiểm khi vào team, có giới hạn số lần sai);
+- tiếng Việt hoặc tiếng Anh theo trình duyệt (không có cả hai thì tiếng Việt), đổi bằng `?lang=`;
+- CSP chặn mọi tài nguyên ngoài, không gửi referrer;
+- `SETUP_URL` (biến của Worker) đổi địa chỉ lệnh cài.
+
+**Trang văn phòng với `?join=<link>`** (`src/office/ui/team-join.js`): chỉ nhận đúng link mời (`inviteFromSearch`), xoá
+khỏi địa chỉ ngay, mở **Cài đặt → Khác → Team** với link điền sẵn. **Không tự vào team**: người dùng vẫn phải bấm.
+Máy đã ở team thì báo, link không hợp lệ thì báo lỗi.
 
 ### Mời và vào team trên giao diện
 
@@ -389,6 +425,14 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
   lần, hết hạn 10 phút, không dùng được cho phòng mình, giữ "luôn"; 10 mã sai thì tạm khoá; tối đa 5 mã chưa dùng;
   `roomView` / `cleanRoom` với `share`. Thêm vào `team-relay.test.mjs`: relay chỉ gửi người khi có người được xem, hết giờ
   thì thôi; giữ lượt gõ cửa và câu trả lời cho trang. `team-floors.test.mjs`: trạng thái `shared`.
+- `tests/unit/team-onboarding.test.mjs`: trang link mời (tên team được escape, nút mở văn phòng, lệnh cài kèm link và
+  ngôn ngữ), chọn ngôn ngữ, `?join=` chỉ nhận link mời, tên team cho trang và team không tồn tại thì không ghi gì.
+  `team-relay.test.mjs`: không đọc được khoá (Keychain đang khoá) thì thử lại, không bỏ cuộc.
+- Cài một dòng đã chạy tay: `setup.sh` từ một repo nguồn tạm vào thư mục tạm (cổng 4421, file settings riêng, không
+  đụng service thật): kiểm máy, clone, `npm ci`, gắn hook, vào team, tiếng Việt. `update`: lấy commit mới, in danh
+  sách, build, không khởi động lại service của thư mục khác; chạy lại thì báo đã mới nhất. Trang link mời trên
+  `wrangler dev`: tên team, nút, lệnh, CSP. Playwright: `?join=` mở Cài đặt với link điền sẵn, địa chỉ được xoá, vào
+  được team; `?join=hello` báo lỗi. Bản build thật bắt được một đường dẫn import sai mà lint / typecheck không thấy.
 - Mời / vào team trên giao diện đã chạy tay: `wrangler dev` (hub 0.3.1) cộng ba server. C (thành viên thường) chạy
   `team invite` bị từ chối `not-owner`, panel của C không có nút mời. A (người tạo team) bấm **Mời người vào team** ra
   link. B chưa ở team: Cài đặt → Khác có ô vào team; dán chữ bậy thì báo lỗi; dán link của A thì vào được, nút Toà nhà
@@ -431,6 +475,13 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
      máy; kính mờ cho phòng đóng; bảng chỉ dẫn tầng; người phòng khác chỉ ngồi, chỉ xem. Cài đặt team trong panel
 4. ✅ Phòng đóng: gõ cửa (1 giờ / hết hôm nay / luôn / từ chối), mã xem một lần, danh sách tin cậy, thu hồi, nhật ký
    ra vào; người được xem thấy phòng đóng như phòng mở. Không làm QR
-5. Chạy thử 3–4 người
-6. Mã hoá đầu cuối cho phòng đóng, cài qua agent-setup, mở cho cả team
-7. Sau này: admin (ban quản lý toà nhà)
+5. Chạy thử 3–4 người: chuẩn bị xong (link mời → trang hướng dẫn → một dòng lệnh / một nút), checklist ở
+   [docs/team-trial.md](../team-trial.md)
+6. Admin: thêm / rút admin, admin xoá member (không xoá được admin khác)
+7. Mã hoá đầu cuối cho phòng đóng, mở cho cả team
+8. Sau này (đã ghi lại, chưa làm):
+   - **một người ở nhiều team**: mỗi team một khoá, một kết nối và chế độ phòng riêng, panel có chỗ chuyển team.
+     Hiện một máy chỉ ở một team (hub thì chứa được nhiều team, team nào chỉ thấy người của team đó);
+   - **coding agent khác** (Codex, Gemini…): hiện chỉ đọc Claude Code (kể cả Claude Code chạy trong Cursor /
+     Antigravity), cần một bộ chuyển sự kiện riêng cho từng agent;
+   - Windows cho chế độ team: không làm (team dùng macOS / Linux).

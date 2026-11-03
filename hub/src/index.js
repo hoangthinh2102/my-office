@@ -7,14 +7,15 @@
 //   POST /t/<team>/leave     leave the team
 //   POST /t/<team>/policy    the team's settings ({ details }; the team's creator only)
 //   GET  /t/<team>/ws        a member's WebSocket: its room up, everyone else's rooms down (signed in the query)
-//   GET  /j/<team>.<code>    an invite link opened in a browser: how to use it
+//   GET  /j/<team>.<code>    an invite link opened in a browser: the team's name and how to join (hub/src/invite-page.js)
 //
 // Every request and answer is described in docs/features/team-mode.md.
 import { isTeamId, randomId } from '../../shared/team-protocol.js';
+import { invitePage } from './invite-page.js';
 
 export { Team } from './team.js';
 
-const VERSION = '0.3.1';
+const VERSION = '0.3.2';
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 const ACTIONS = new Set(['invites', 'join', 'me', 'leave', 'policy', 'ws', 'knock', 'answer', 'revoke', 'code', 'redeem', 'access']);
 
@@ -25,7 +26,12 @@ const hub = {
 
     const invite = url.pathname.match(/^\/j\/([A-Za-z0-9_-]{22})\.([A-Za-z0-9-]+)$/);
     if (invite && request.method === 'GET') {
-      return new Response(`This is an invite to a My Office team.\n\nOn your computer, in the my-office folder, run:\n\n  node bin/cli.mjs team join ${url.origin}${url.pathname}\n\nIt works once, for 15 minutes.\n`, { headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' } });
+      // the team's name, from its Durable Object (nothing is written for a team that doesn't exist)
+      let team = null;
+      try { team = (await (await forward(env, invite[1], 'name', new Request(request.url), url)).json()).name || null; } catch { /* the page works without it */ }
+      const html = invitePage({ link: `${url.origin}${url.pathname}`, team, accept: request.headers.get('accept-language'), asked: url.searchParams.get('lang'), setupUrl: env.SETUP_URL || undefined });
+      return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer',
+        'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" } });
     }
 
     if (url.pathname === '/teams' && request.method === 'POST') {

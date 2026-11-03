@@ -78,6 +78,7 @@ export class TeamCore {
         case 'POST code': return await this.viewCode(req);
         case 'POST redeem': return await this.redeem(req);
         case 'GET access': return await this.accessOut(req);
+        case 'GET name': return { status: 200, body: { name: this.ready ? this.meta('name') || null : null } };   // (the Worker's invite page only: not in its ACTIONS)
         default: fail(404, 'not-found');
       }
     } catch (e) {

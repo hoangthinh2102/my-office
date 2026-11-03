@@ -23,6 +23,19 @@ open <http://localhost:4310/?demo>.
 You need Node.js 20.9 or newer and Claude Code, on macOS, Linux or Windows. The machine panel (RAM, CPU, disk, dev
 servers, cleanup) reads each system its own way; opening a session's IDE window and quitting apps are macOS only.
 
+**One line** (macOS, Linux; Node 22 or newer):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/hoangthinh2102/my-office/main/setup.sh | bash
+```
+
+It downloads My Office to `~/my-office` (or updates a clone already there), installs its packages, adds the hooks,
+runs the office in the background and opens <http://localhost:4310>. Joining a team: open the invite link you were sent
+in a browser, it shows the same line with the invite added (`--join <link>`). Later, to get a newer version:
+`node bin/cli.mjs update`.
+
+**By hand:**
+
 ```bash
 git clone https://github.com/hoangthinh2102/my-office.git && cd my-office
 npm install
@@ -39,6 +52,8 @@ Then open <http://localhost:4310>.
 | Command | What it does |
 | --- | --- |
 | `install [--service] [--lan] [--no-approve] [--no-status]` | Adds three kinds of hooks: event hooks, approval hooks, and a status line that reports your plan's usage. Your own status line keeps running inside it. `--service` runs the office in the background from login: launchd on macOS, a systemd user service on Linux, the Startup folder on Windows (no admin needed). `--lan` lets a phone on the same Wi-Fi watch. `--no-approve` leaves out the approval hooks. `--no-status` leaves your status line alone. |
+| `setup [--join <invite link>] [--name <name>] [--lang vi\|en] [--no-open]` | Everything `install --service` does, then waits for the office, joins a team with an invite link, and opens the page. `setup.sh` runs it. |
+| `update [--force]` | Gets the newest version (`git pull --ff-only`, refuses when you have changes of your own), installs new packages, builds, and restarts the background service. |
 | `uninstall` | Removes every My Office hook and the background service, and keeps the rest of `settings.json`. |
 | `doctor` | Checks each step and says what is missing and how to fix it. |
 | `start [--lan]` | Runs the server in this terminal (no launchd). |
