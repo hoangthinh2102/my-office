@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { ROOMS_PER_FLOOR, floorsOf, headcount, latest, stateOf } from '../../src/shared/team-floors.js';
+import { BREAK_SEATS, FLOOR_THEMES, ROOMS_PER_FLOOR, floorsOf, headcount, latest, seatPeople, stateOf, themeOf } from '../../src/shared/team-floors.js';
 
 const room = (i, over = {}) => ({ member: { id: `m${i}`, name: `Member ${i}` }, online: true, mode: 'closed', ...over });
 
@@ -43,4 +43,23 @@ test('headcount and latest event', () => {
   assert.equal(headcount(room(1)), 0);
   assert.equal(latest(room(1)), null);
   assert.deepEqual(latest(room(1, { events: [{ type: 'read' }, { type: 'edit' }] })), { type: 'edit' });
+});
+
+test('floors take the three looks in turn, the same for everyone', () => {
+  assert.deepEqual(FLOOR_THEMES, ['studio', 'garden', 'library']);
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 7].map(themeOf), ['studio', 'garden', 'library', 'studio', 'garden', 'library', 'studio']);
+  // anything odd counts as floor 1
+  for (const n of [0, -2, null, undefined, 'x', NaN]) assert.equal(themeOf(n), 'studio');
+  assert.equal(themeOf('2'), 'garden');
+});
+
+test('the break corner seats whoever rests, keeping their seat, never more than it has', () => {
+  const rest = (ids) => ids.map((id) => ({ id }));
+  const a = seatPeople(rest(['p1', 'p2', 'p3']), new Map(), BREAK_SEATS);
+  assert.deepEqual([...a.seats], [['p1', 0], ['p2', 1]]);
+  assert.equal(a.extra, 1);
+  // p1 goes back to work: p2 keeps the seat, p3 takes the free one
+  const b = seatPeople(rest(['p2', 'p3']), a.seats, BREAK_SEATS);
+  assert.deepEqual([...b.seats], [['p2', 1], ['p3', 0]]);
+  assert.equal(b.extra, 0);
 });
