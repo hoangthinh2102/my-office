@@ -1,6 +1,6 @@
-// Settings: four tabs of picture cards instead of a long list. Office (floor plan, scenery, time of day, real weather),
-// Characters (the two looks, drawn live by the office's renderer), Display (graphics, language, what shows on screen)
-// and More (phone, alerts, behaviour). Static markup: src/office/ui/settings.js drives it; ids and data-* stay as the
+// Settings: five tabs instead of a long list. Office (floor plan, scenery, time of day, real weather), Characters (the
+// two looks, drawn live by the office's renderer), Display (graphics, language, what shows on screen), Skills (this
+// computer's Claude Code skills and plugins: src/office/ui/skills.js) and More (phone, alerts, team, behaviour). Static markup: src/office/ui/settings.js drives it; ids and data-* stay as the
 // office's code expects them.
 import { LANGS } from '@/i18n/index.js';
 import { getT } from '@/i18n/server';
@@ -26,7 +26,7 @@ export default async function SettingsPanel() {
         <button type="button" className="st-close" id="st-close" aria-label={t('common.close')}><span data-icon="x"></span></button>
       </div>
       <div className="st-tabs" role="tablist">
-        {(['office', 'people', 'display', 'more'] as const).map((k, i) => (
+        {(['office', 'people', 'display', 'skills', 'more'] as const).map((k, i) => (
           <button key={k} type="button" role="tab" id={`st-tab-${k}`} aria-controls={`st-panel-${k}`} aria-selected={i === 0 ? 'true' : 'false'} data-st-tab={k}>{t(`settings.tabs.${k}`)}</button>
         ))}
       </div>
@@ -107,6 +107,41 @@ export default async function SettingsPanel() {
 
           <h3>{t('ui.topBar.more')}</h3>
           <div className="pop-toggles">{toggle('zones', false)}{toggle('stream', false)}{toggle('autocam', true)}</div>
+        </section>
+
+        <section className="st-panel" id="st-panel-skills" role="tabpanel" aria-labelledby="st-tab-skills" data-st-panel="skills" hidden>
+          <p className="pop-note" id="sk-phone" hidden>{t('settings.skills.phone')}</p>
+          <div className="sk" id="sk" hidden>
+            <h3>{t('settings.skills.mine')} <span className="sk-n" id="sk-n"></span></h3>
+            <p className="pop-note">{t('settings.skills.note')}</p>
+            <ul className="sk-list" id="sk-list"></ul>
+
+            <h3>{t('settings.skills.fromFolder')}</h3>
+            <form className="sk-form" id="sk-add">
+              <input id="sk-dir" type="text" autoComplete="off" spellCheck={false} placeholder={t('settings.skills.dirPh')} aria-label={t('settings.skills.fromFolder')} />
+              <button type="submit" className="tb-btn" id="sk-add-go"><span data-icon="plus"></span><span className="lbl">{t('settings.skills.add')}</span></button>
+              <label className="sk-check"><input type="checkbox" id="sk-copy" /> <span>{t('settings.skills.copy')}</span></label>
+              <p className="pop-note">{t('settings.skills.folderNote')}</p>
+            </form>
+
+            <p className="pop-note" id="sk-noclaude" hidden>{t('settings.skills.noClaude')}</p>
+            <div id="sk-market">
+              <h3>{t('settings.skills.fromMarket')}</h3>
+              <form className="sk-form" id="sk-find" role="search">
+                <input id="sk-q" type="search" autoComplete="off" spellCheck={false} placeholder={t('settings.skills.searchPh')} aria-label={t('settings.skills.fromMarket')} />
+                <button type="submit" className="tb-btn" id="sk-find-go"><span data-icon="search"></span><span className="lbl">{t('settings.skills.search')}</span></button>
+              </form>
+              <ul className="sk-list sk-results" id="sk-results"></ul>
+              <details className="sk-markets">
+                <summary>{t('settings.skills.markets')} (<span id="sk-markets-n"></span>)</summary>
+                <ul className="sk-list" id="sk-market-list"></ul>
+                <form className="sk-form" id="sk-market-add">
+                  <input id="sk-market-src" type="text" autoComplete="off" spellCheck={false} placeholder={t('settings.skills.marketPh')} aria-label={t('settings.skills.addMarket')} />
+                  <button type="submit" className="tb-btn" id="sk-market-go"><span data-icon="plus"></span><span className="lbl">{t('settings.skills.addMarket')}</span></button>
+                </form>
+              </details>
+            </div>
+          </div>
         </section>
 
         <section className="st-panel" id="st-panel-more" role="tabpanel" aria-labelledby="st-tab-more" data-st-panel="more" hidden>

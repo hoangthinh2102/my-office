@@ -31,6 +31,7 @@ import { ASK_PROTOCOL, parseAsk, answerText } from './asks.mjs';
 import { createAgentSupport } from './agent-support.mjs';
 import { createRecent } from './recent.mjs';
 import { createSlash } from './slash.mjs';
+import { createSkills } from './skills.mjs';
 import { saveAttachments, dropAttachments, sweepAttachments } from './attach.mjs';
 import { createPerf } from './perf.mjs';
 import { pickLang, createT } from '../src/i18n/index.js';
@@ -697,6 +698,8 @@ const DM_FILE = path.join(DATA_DIR, 'dm.json');
 const recent = createRecent({ claudeDir: CLAUDE_DIR });
 // the "/" list of the director's office: the skills and commands a person's Claude Code offers (server/slash.mjs)
 const slash = createSlash({ claudeDir: CLAUDE_DIR });
+// Settings → Skills: this computer's personal skills and marketplace plugins (server/skills.mjs)
+const skills = createSkills({ claudeDir: CLAUDE_DIR, dataDir: DATA_DIR, claude: () => findClaude()?.file || null });
 let dms = {};
 try { dms = JSON.parse(fs.readFileSync(DM_FILE, 'utf8')) || {}; for (const d of Object.values(dms)) { d.running = false; noteBranch(d); } } catch { /* none yet */ }
 function noteBranch(d) { if (d?.branch && d.sid && d.branch !== d.sid) branchRoot.set(d.branch, d.sid); }
@@ -2480,6 +2483,31 @@ const server = http.createServer((req, res) => {
       json(res, 200, { ok: true, lang: prefs.lang() });
       broadcast({ k: 'lang', lang: prefs.lang() });   // every open page reloads in the new language
     });
+    return;
+  }
+  // Settings → Skills (server/skills.mjs): list, search the marketplaces, add or remove. This computer only: what is
+  // added runs in every Claude Code session here, so a phone (or anyone on the tunnel) can't change it.
+  if (url.pathname === '/api/skills' || url.pathname === '/api/skills/search') {
+    if (!isLoopback(req)) { json(res, 403, { ok: false, message: tr('server.forbidden') }); return; }
+    if (req.method === 'GET') {
+      (url.pathname === '/api/skills' ? skills.list() : skills.search(url.searchParams.get('q') || ''))
+        .then((out) => json(res, 200, { ok: true, ...out }), (e) => json(res, 200, { ok: false, code: e.code || 'error' }));
+      return;
+    }
+    if (req.method !== 'POST' || url.pathname !== '/api/skills' || !sameOriginOf(req) || !String(req.headers['content-type'] || '').startsWith('application/json')) { json(res, 403, { ok: false, message: tr('server.forbidden') }); return; }
+    readJson(req).then(async (b) => {
+      const act = {
+        'add-folder': () => skills.addFolder({ dir: b.dir, copy: !!b.copy }),
+        remove: () => skills.remove(b.name),
+        install: () => skills.install(b.plugin),
+        uninstall: () => skills.uninstall(b.plugin),
+        'add-market': () => skills.addMarket(b.source),
+      }[b?.action];
+      if (!act) { json(res, 400, { ok: false, message: tr('server.badRequest') }); return; }
+      let out;
+      try { out = await act(); } catch (e) { json(res, 400, { ok: false, code: e.code || 'error', detail: e.detail || '' }); return; }
+      json(res, 200, { ok: true, result: { added: out.added, skipped: out.skipped, was: out.was, movedTo: out.movedTo }, ...(await skills.list()) });
+    }).catch(() => json(res, 400, { ok: false, message: tr('server.badRequest') }));
     return;
   }
   if (req.method === 'POST' && url.pathname === '/api/team/room') {   // team mode: open, close or pause your room (this computer only; a phone only watches)

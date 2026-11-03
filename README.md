@@ -58,6 +58,7 @@ Then open <http://localhost:4310>.
 | `doctor` | Checks each step and says what is missing and how to fix it. |
 | `start [--lan]` | Runs the server in this terminal (no launchd). |
 | `pin [--new]` | Shows the phone PIN; `--new` changes it and signs every phone out. |
+| `skills [list \| add <folder> [--copy] \| remove <name> \| search [words] \| install <plugin@marketplace> \| uninstall … \| market add <source>]` | Your Claude Code skills on this computer, as in **Settings → Skills**: add one from a folder of yours (a link, or `--copy`), or a plugin from a marketplace. See [docs/features/skills.md](docs/features/skills.md). |
 
 - Restart after changing the code: `launchctl kickstart -k gui/$(id -u)/com.my-office` (macOS) or
   `systemctl --user restart my-office` (Linux). `node bin/cli.mjs doctor` prints the right command for your system.

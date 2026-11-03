@@ -16,6 +16,7 @@ import { setScene } from '../world/backdrops/index.js';
 import { TOKEN } from '../net/live.js';
 import { onQualityChange, quality, setQuality } from '../scene/quality.js';
 import { drawPortraits } from './portraits.js';
+import { openSkills } from './skills.js';
 import { DEFAULT_LANG, t as tr, lang } from '../../i18n/index.js';
 
 export let popLook;
@@ -40,8 +41,8 @@ function setLang(l) {
   fetch(`/api/prefs${TOKEN ? `?k=${encodeURIComponent(TOKEN)}` : ''}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lang: l }) })
     .then((r) => (r.ok ? location.replace(u) : viaUrl())).catch(viaUrl);
 }
-// the four tabs of Settings; the last one opened comes back next time
-const TABS = ['office', 'people', 'display', 'more'];
+// the five tabs of Settings; the last one opened comes back next time
+const TABS = ['office', 'people', 'display', 'skills', 'more'];
 let tabNow = 'office';
 function showTab(k, focus = false) {
   if (!TABS.includes(k)) k = 'office';
@@ -50,6 +51,7 @@ function showTab(k, focus = false) {
   for (const p of popLook.querySelectorAll('[data-st-panel]')) p.hidden = p.dataset.stPanel !== k;
   try { localStorage.setItem('office-settings-tab', k); } catch { /* storage blocked */ }
   if (k === 'people') requestAnimationFrame(drawPortraits);   // drawn once, the first time
+  if (k === 'skills') openSkills();   // (read again each time: a skill may have been added in a terminal)
 }
 /** Opens Settings on one of its tabs (an invite link opened as ?join=… goes to More → Team). */
 export function openSettings(tab) { togglePop(true); showTab(tab); }
@@ -97,7 +99,8 @@ export function setup() {
     e.preventDefault(); showTab(TABS[(next + TABS.length) % TABS.length], true);
   });
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && !popLook.hidden) { togglePop(false); btnLook.focus(); } });
-  document.addEventListener('click', (e) => { if (!popLook.hidden && !e.target.closest('#pop-look, #btn-look')) togglePop(false); });
+  // (a click on something the panel just redrew, like a button in Skills, isn't a click outside it)
+  document.addEventListener('click', (e) => { if (!popLook.hidden && e.target.isConnected && !e.target.closest('#pop-look, #btn-look')) togglePop(false); });
   // the plan popover, opened from its pill
   popPlan = $('pop-plan'); btnPlan = $('btn-plan');
   btnPlan.addEventListener('click', (e) => { e.stopPropagation(); togglePlan(); });
