@@ -108,6 +108,25 @@ export function createTeamClient({ dataDir, fetch = globalThis.fetch }) {
       await forget(s);
     },
 
+    /** Opens or closes this computer's room (the relay picks it up from team.json). */
+    async setRoom(mode) {
+      if (!['open', 'closed'].includes(mode)) throw new TeamError('bad-mode');
+      const s = await readState();
+      if (!s) throw new TeamError('no-team');
+      await writeState({ ...s, room: { ...(s.room || {}), mode } });
+    },
+    /** Stops (or starts again) sending anything to the hub: the room shows as offline. */
+    async setPaused(paused) {
+      const s = await readState();
+      if (!s) throw new TeamError('no-team');
+      await writeState({ ...s, paused: !!paused });
+    },
+    /** The team's settings; only the team's creator may change them. */
+    async setPolicy({ details }) {
+      const { s, keys } = await current();
+      return (await call(s.hub, keys, 'POST', `/t/${s.teamId}/policy`, { details: !!details })).policy;
+    },
+
     /** Becomes the member a recovery key belongs to, on this computer. */
     async restore({ recovery }) {
       await notInTeam();

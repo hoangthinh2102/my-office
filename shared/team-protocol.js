@@ -133,3 +133,94 @@ export function cleanName(name) {
   const s = String(name ?? '').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e]/g, ' ').replace(/\s+/g, ' ').trim();
   return [...s].slice(0, NAME_MAX).join('');
 }
+
+/* ---------- the relay (step 2) ----------
+   Each member's office keeps one WebSocket to the hub: it sends its own room and receives everyone else's. What a room
+   shows depends on its mode, and is cut down twice: on the member's computer before anything leaves it, and again on
+   the hub before it goes to anyone else.
+     closed (the default): online or not, and how many are working / resting / waiting
+     open:                 also each person: status, project, job title, subagents, the KIND of thing being done
+   A file name or command (the event's label) is added only while the team's "details" setting is on (only the team's
+   creator can turn it on). Prompts, conversation titles, answers, folders, pids and costs never leave the computer. */
+export const RELAY_BATCH_MS = 1500;      // changes are sent at most this often
+export const RELAY_BEAT_MS = 60_000;     // the whole room is sent again this often (the hub saves it from this)
+export const MSG_MAX = 32 * 1024;
+export const MODES = new Set(['open', 'closed']);
+export const STATUSES = new Set(['work', 'rest', 'wait']);
+export const EVENT_TYPES = new Set(['agent', 'ask', 'bash', 'ci', 'command', 'commit', 'compact', 'deploy', 'edit', 'end', 'fail', 'fetch', 'glob',
+  'grep', 'idle', 'interrupt', 'mcp', 'other', 'plan', 'prompt', 'push', 'read', 'skill', 'start', 'stop', 'substart', 'substop', 'test',
+  'testfail', 'testok', 'wait', 'web', 'write']);
+const PEOPLE_MAX = 60, EVENTS_MAX = 50, LABEL_MAX = 80;
+const int = (n, max = 1e6) => (Number.isFinite(+n) ? Math.min(max, Math.max(0, Math.round(+n))) : 0);
+const label = (s) => [...String(s ?? '').replace(/\s+/g, ' ').trim()].slice(0, LABEL_MAX).join('');
+const evType = (t) => (EVENT_TYPES.has(t) ? t : 'other');
+const statusOf = (s) => (STATUSES.has(s) ? s : 'rest');
+export const isOpaqueId = (id) => typeof id === 'string' && /^[a-z0-9]{6,16}$/.test(id);
+
+export function presence(sessions) {
+  const c = { work: 0, rest: 0, wait: 0 };
+  for (const s of sessions || []) c[statusOf(s?.status)]++;
+  return c;
+}
+
+/** This computer's room as it may leave it. sessions: the server's public session views (server/index.mjs pub());
+    idOf(sessionId): an opaque id for it; redact: masks secrets in a label. */
+export function roomView(sessions, { mode, details = false, idOf, redact = (x) => x }) {
+  const m = MODES.has(mode) ? mode : 'closed', room = { mode: m, counts: presence(sessions) };
+  if (m !== 'open') return room;
+  room.people = (sessions || []).slice(0, PEOPLE_MAX).map((s) => {
+    const p = {
+      id: idOf(s.id), status: statusOf(s.status),
+      project: cleanName(s.git?.repo || String(s.dir || '').split(/[\\/]/).filter(Boolean).pop() || ''),
+      role: cleanName(s.role || ''), subs: int((s.subs || []).length, 99),
+      act: s.last?.type ? evType(s.last.type) : '', since: int(s.taskStart, 1e14), at: int(s.lastAt, 1e14),
+    };
+    if (details && s.last?.label) p.label = label(redact(s.last.label));
+    return p;
+  });
+  return room;
+}
+/** One event as it may leave this computer (open rooms only). */
+export function eventView(e, { details = false, idOf, redact = (x) => x }) {
+  const v = { p: idOf(e.sess), type: evType(e.type), ts: int(e.ts, 1e14) };
+  if (details && e.label) v.label = label(redact(e.label));
+  return v;
+}
+
+/** What the hub keeps and passes on from what a member sent: every field checked and clipped, and nothing a closed
+    room (or the team's details setting) doesn't allow. Returns null for anything that isn't a room. */
+export function cleanRoom(raw, { details = false } = {}) {
+  if (!raw || typeof raw !== 'object') return null;
+  const mode = MODES.has(raw.mode) ? raw.mode : 'closed', c = raw.counts || {};
+  const room = { mode, counts: { work: int(c.work, 999), rest: int(c.rest, 999), wait: int(c.wait, 999) } };
+  if (mode !== 'open' || !Array.isArray(raw.people)) return room;
+  room.people = raw.people.slice(0, PEOPLE_MAX).filter((p) => p && isOpaqueId(p.id)).map((p) => {
+    const o = { id: p.id, status: statusOf(p.status), project: cleanName(p.project), role: cleanName(p.role), subs: int(p.subs, 99),
+      act: p.act ? evType(p.act) : '', since: int(p.since, 1e14), at: int(p.at, 1e14) };
+    if (details && p.label) o.label = label(p.label);
+    return o;
+  });
+  return room;
+}
+export function cleanEvents(list, { details = false } = {}) {
+  return (Array.isArray(list) ? list : []).slice(0, EVENTS_MAX).filter((e) => e && isOpaqueId(e.p)).map((e) => {
+    const o = { p: e.p, type: evType(e.type), ts: int(e.ts, 1e14) };
+    if (details && e.label) o.label = label(e.label);
+    return o;
+  });
+}
+
+/* The WebSocket's signature travels in its query (k, ts, n, sig), since a WebSocket can't carry headers everywhere. It
+   signs GET and the path without that query, like any other request. */
+export const wsPath = (teamId) => `/t/${teamId}/ws`;
+export async function signedWsUrl(keys, hub, teamId, now = Date.now()) {
+  const h = await signRequest(keys, { method: 'GET', path: wsPath(teamId), now });
+  const u = new URL(hubBase(hub) + wsPath(teamId));
+  u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
+  u.search = new URLSearchParams({ k: h[HEADERS.key], ts: h[HEADERS.ts], n: h[HEADERS.nonce], sig: h[HEADERS.sig], v: h[HEADERS.v] }).toString();
+  return u.toString();
+}
+/** The signature headers carried in a WebSocket URL's query, for verifyRequest. */
+export const wsHeaders = (searchParams) => ({
+  [HEADERS.key]: searchParams.get('k'), [HEADERS.ts]: searchParams.get('ts'), [HEADERS.nonce]: searchParams.get('n'), [HEADERS.sig]: searchParams.get('sig'),
+});

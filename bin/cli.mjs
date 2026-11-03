@@ -152,6 +152,15 @@ async function doctor() {
       else warn(tr('cli.doctor.statusSilent'));
     }
   }
+  if (fs.existsSync(path.join(DATA_DIR, 'team.json'))) {   // team mode (docs/features/team-mode.md)
+    if (major < 22) bad(tr('cli.doctor.teamNode', { version: process.versions.node }));
+    try {
+      const t = await (await fetch(`http://127.0.0.1:${PORT}/api/team`)).json();
+      if (t.room?.paused) warn(tr('cli.doctor.teamPaused', { team: t.team.name }));
+      else if (t.connected) ok(tr('cli.doctor.teamUp', { team: t.team.name, n: t.rooms.length }));
+      else warn(tr('cli.doctor.teamDown', { team: t.team?.name || '', why: tr(`cli.team.problem.${t.problem || 'reconnecting'}`) }));
+    } catch { /* the server is down: said above */ }
+  }
   const svc = service(), st = await svc.state();
   if (st === 'running') ok(tr('cli.doctor.serviceUp'));
   else if (st === 'stopped') warn(tr('cli.doctor.serviceDown', { restart: svc.restart }));
@@ -177,7 +186,8 @@ function start() {
 }
 /* ---------- team mode (docs/features/team-mode.md) ----------
    my-office team create --hub <url> --name <team> [--me <your name>] [--token <hub's create token>]
-   my-office team invite | join <invite link> [--me <name>] | status | leave [--local] | restore <recovery key> */
+   my-office team invite | join <invite link> [--me <name>] | status | leave [--local] | restore <recovery key>
+   my-office team room open|closed | pause | resume | rooms | policy details on|off */
 async function team() {
   const { createTeamClient, TeamError } = await import('../server/team/client.mjs');
   const client = createTeamClient({ dataDir: DATA_DIR });
@@ -208,8 +218,35 @@ async function team() {
       const r = await client.status();
       console.log(tr('cli.team.statusTitle', { team: r.team.name, hub: r.state.hub }));
       ok(tr('cli.team.you', { name: r.me.name, room: tr(`cli.team.room.${r.state.room?.mode || 'closed'}`) }));
+      if (r.state.paused) warn(tr('cli.team.isPaused'));
+      console.log(`  ${tr(r.policy?.details ? 'cli.team.policyIsOn' : 'cli.team.policyIsOff')}${r.me.owner ? ` ${tr('cli.team.youOwn')}` : ''}`);
       console.log(`  ${tr('cli.team.members', { n: r.members.length })}`);
       for (const m of r.members) console.log(`    · ${m.name}${m.id === r.me.id ? ` (${tr('cli.team.itsYou')})` : ''}`);
+    } else if (sub === 'room') {
+      if (!['open', 'closed'].includes(arg)) { console.log(tr('cli.team.usage')); process.exitCode = 1; return; }
+      await client.setRoom(arg);
+      ok(tr(`cli.team.roomSet.${arg}`));
+    } else if (sub === 'pause' || sub === 'resume') {
+      await client.setPaused(sub === 'pause');
+      ok(tr(`cli.team.${sub}d`));
+    } else if (sub === 'policy') {
+      const on = args[3];
+      if (arg !== 'details' || !['on', 'off'].includes(on)) { console.log(tr('cli.team.usage')); process.exitCode = 1; return; }
+      const p = await client.setPolicy({ details: on === 'on' });
+      ok(tr(p.details ? 'cli.team.policyOn' : 'cli.team.policyOff'));
+    } else if (sub === 'rooms') {
+      let st;
+      try { st = await (await fetch(`http://127.0.0.1:${PORT}/api/team`)).json(); } catch { bad(tr('cli.doctor.serverDown', { port: PORT })); process.exitCode = 1; return; }
+      if (!st.inTeam) { console.log(`  ${tr('cli.team.none')}`); return; }
+      console.log(tr('cli.team.roomsTitle', { team: st.team.name }));
+      if (st.room.paused) warn(tr('cli.team.isPaused'));
+      else st.connected ? ok(tr('cli.team.connected')) : warn(tr('cli.team.notConnected', { why: tr(`cli.team.problem.${st.problem || 'reconnecting'}`) }));
+      if (!st.rooms.length) console.log(`  ${tr('cli.team.noRooms')}`);
+      for (const r of st.rooms) {
+        const c = r.counts || {}, head = `${r.member.name} · ${r.online ? tr(`cli.team.mode.${r.mode}`) : tr('cli.team.offline')}`;
+        console.log(`  ${r.online ? '●' : '○'} ${head}${r.online ? ` · ${tr('cli.team.counts', { work: c.work || 0, wait: c.wait || 0, rest: c.rest || 0 })}` : ''}`);
+        for (const p of r.people || []) console.log(`      - ${[p.role, p.project].filter(Boolean).join(' · ') || '—'}: ${tr(`cli.team.status.${p.status}`)}${p.act ? ` (${p.act}${p.label ? `: ${p.label}` : ''})` : ''}`);
+      }
     } else if (sub === 'leave') {
       await client.leave({ local: args.includes('--local') });
       ok(tr('cli.team.left'));
