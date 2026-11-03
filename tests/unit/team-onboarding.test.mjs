@@ -18,6 +18,18 @@ test('the invite page: the team, both ways in, and nothing unescaped', () => {
   assert.ok(invitePage({ link: LINK, team: 'T', accept: 'en', setupUrl: 'https://x.test/s.sh' }).includes('curl -fsSL https://x.test/s.sh | bash -s -- --lang en'));
 });
 
+test('an expired invite page says so, with no way in', () => {
+  const vi = invitePage({ link: LINK, team: 'Gam<ota>', expired: true, accept: 'vi' });
+  assert.ok(vi.includes('Link mời đã hết hạn'));
+  assert.ok(vi.includes('“Gam&lt;ota&gt;”'));
+  assert.ok(vi.includes('Xin admin'));
+  for (const gone of ['localhost:4310', 'curl ', 'team join', '<script', 'id="cp"']) assert.ok(!vi.includes(gone), gone);
+  const en = invitePage({ link: LINK, team: null, expired: true, accept: 'en' });
+  assert.ok(en.includes('This invite link has expired'));
+  assert.ok(!en.includes('null'));
+  assert.ok(invitePage({ link: LINK, team: 'T', accept: 'vi' }).includes('localhost:4310'));   // (not expired: the normal page)
+});
+
 test('the invite page\'s language: ?lang=, else what the browser lists first, else Vietnamese', () => {
   assert.equal(pickLang('en-US,en;q=0.9,vi;q=0.8'), 'en');
   assert.equal(pickLang('vi-VN,vi;q=0.9,en;q=0.8'), 'vi');
@@ -43,9 +55,9 @@ test('the team\'s name for the invite page; a team that doesn\'t exist gets noth
   const sql = { exec: (q, ...b) => { const rows = db.prepare(q).all(...b); return { toArray: () => rows }; } };
   const clock = { t: 1_800_000_000_000 }, teamId = randomId(16), core = new TeamCore(sql, { now: () => clock.t });
   const name = () => core.handle({ method: 'GET', path: `/t/${teamId}/name`, body: '', headers: new Headers(), teamId, action: 'name', hub: 'https://hub.test' });
-  assert.deepEqual((await name()).body, { name: null });
+  assert.deepEqual((await name()).body, { name: null, expired: false });
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table'").get().n, 0);
   const keys = await generateKeys(), body = JSON.stringify({ team: 'Gamota', name: 'An' });
   await core.handle({ method: 'POST', path: '/teams', body, headers: await signRequest(keys, { method: 'POST', path: '/teams', body, now: clock.t }), teamId, action: 'create', hub: 'https://hub.test' });
-  assert.deepEqual((await name()).body, { name: 'Gamota' });
+  assert.deepEqual((await name()).body, { name: 'Gamota', expired: false });
 });

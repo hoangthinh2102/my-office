@@ -122,6 +122,30 @@ test('hub: an invite works for everyone who has it, for an hour, and only its ow
   assert.equal((await send(await generateKeys(), 'POST', 'join', { code: 'short', name: 'F' })).body.error, 'bad-request');
 });
 
+test('hub: the invite page hears that a good link ran out (kept a week); a wrong code looks like a live one', { skip: !DatabaseSync && 'needs node:sqlite' }, async () => {
+  const { send, clock, teamId } = hub(), a = await generateKeys();
+  await send(a, 'POST', 'create', { team: 'Gamota', name: 'A' });
+  // the Worker forwards the page's own path, unsigned
+  const page = async (link) => (await send(null, 'GET', 'name', null, { path: new URL(link).pathname, headers: new Headers() })).body;
+  const link = (await send(a, 'POST', 'invites', {})).body.invite;
+  const wrong = `${HUB}/j/${teamId}.${makeInviteCode()}`;
+  assert.deepEqual(await page(link), { name: 'Gamota', expired: false });
+  assert.deepEqual(await page(wrong), { name: 'Gamota', expired: false });
+  assert.deepEqual(await page(`${HUB}/j/${teamId}.short`), { name: 'Gamota', expired: false });
+
+  clock.t += INVITE_TTL_MS + 1;
+  assert.deepEqual(await page(link), { name: 'Gamota', expired: true });
+  assert.deepEqual(await page(`${HUB}/j/${teamId}.${link.split('.').pop().toLowerCase()}`), { name: 'Gamota', expired: true });   // (codes are read in any case)
+  assert.deepEqual(await page(wrong), { name: 'Gamota', expired: false });
+
+  clock.t += 6 * 24 * 3600_000;
+  await send(a, 'POST', 'invites', {});   // (making an invite clears out old ones)
+  assert.equal((await page(link)).expired, true);
+  clock.t += 2 * 24 * 3600_000;
+  await send(a, 'POST', 'invites', {});
+  assert.equal((await page(link)).expired, false);   // (a week on, it's forgotten)
+});
+
 test('hub: wrong codes pause joining; open invites are capped', { skip: !DatabaseSync && 'needs node:sqlite' }, async () => {
   const { send } = hub(), a = await generateKeys();
   await send(a, 'POST', 'create', { team: 'T', name: 'A' });
