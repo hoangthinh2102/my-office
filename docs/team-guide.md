@@ -10,52 +10,56 @@ team** đưa văn phòng của cả team vào chung một toà nhà:
 - **Không cần tài khoản hay mật khẩu.** Máy của bạn tự có một khoá riêng, và khoá đó chính là danh tính của bạn.
 - **Code, prompt, nội dung trò chuyện với Claude không bao giờ rời khỏi máy bạn.**
 
-> **Hiện trạng (bước 4):** đã có vào team, mời người khác, mở / đóng / tạm dừng phòng, toà nhà trên trang và toà nhà
-> 3D, gõ cửa phòng đóng, mã xem, thu hồi và nhật ký ra vào.
+> **Hiện trạng:** vào team bằng link mời (một dòng lệnh cài, hoặc một nút), mở / đóng / tạm dừng phòng, toà nhà trên
+> trang và toà nhà 3D, gõ cửa phòng đóng, mã xem, thu hồi, nhật ký ra vào. Đang chạy thử với 3–4 người:
+> [docs/team-trial.md](team-trial.md).
 
 ---
 
-## 1. Cài My Office (một lần)
+## 1. Vào team: mở link mời
 
-Cần **Node.js 22** trở lên (chế độ team dùng WebSocket có sẵn trong Node 22) và Claude Code, trên macOS hoặc Linux.
+Người tạo team gửi bạn **một link mời** (qua Lark). Link có dạng `https://…/j/…`, **chỉ dùng được một lần, trong 15
+phút**. Hết hạn thì xin link mới.
+
+Mở link đó bằng trình duyệt **trên máy tính bạn dùng Claude Code**. Trang hiện tên team và hai lựa chọn:
+
+- **Đã cài My Office trên máy này** → bấm **Mở My Office để vào team**. Văn phòng mở ra, mục *Cài đặt → Khác → Team* đã
+  điền sẵn link: gõ tên của bạn (để trống thì lấy tên git) rồi bấm **Vào team**.
+- **Chưa có My Office** → bấm **Chép lệnh**, mở Terminal, dán rồi Enter. Lệnh tự làm hết, khoảng 2–3 phút:
+  1. kiểm tra máy (macOS / Linux, git, Node 22);
+  2. tải My Office về `~/my-office` (đã có thì cập nhật);
+  3. cài các gói, gắn hook vào Claude Code, chạy văn phòng nền mỗi lần mở máy;
+  4. vào team với link mời, rồi mở <http://localhost:4310>.
+
+Xong thì **mở một phiên Claude Code mới** (hoặc khởi động lại VS Code) để nhân viên bắt đầu vào văn phòng. Nút
+**Toà nhà** trên thanh trên cùng là toà nhà của team.
+
+Cần: macOS hoặc Linux, **Node.js 22** trở lên (`node -v`; thiếu thì `brew install node@22` hoặc `nvm install 22`),
+Claude Code.
+
+## 2. Cách khác và cập nhật
+
+**Cài mà chưa có link mời**:
 
 ```bash
-git clone https://github.com/hoangthinh2102/my-office.git && cd my-office
-npm install
-node bin/cli.mjs install --service   # gắn hook vào Claude Code và chạy văn phòng mỗi lần mở máy
-node bin/cli.mjs doctor              # kiểm tra mọi thứ đã ổn
+curl -fsSL https://raw.githubusercontent.com/hoangthinh2102/my-office/main/setup.sh | bash -s -- --lang vi
 ```
 
-Mở <http://localhost:4310> để xem văn phòng của bạn.
+Sau đó vào team trong văn phòng: **Cài đặt → Khác → Team**, dán link mời, bấm **Vào team**.
 
-Mọi lệnh dưới đây chạy **trong thư mục `my-office`**.
+**Bằng lệnh** (trong thư mục `my-office`, mặc định `~/my-office`):
 
-## 2. Vào team
+```bash
+node bin/cli.mjs team join <link mời> [--me "Tên bạn"]
+node bin/cli.mjs team status          # tên team, tên bạn, chế độ phòng, các thành viên
+```
 
-1. Xin **người tạo team** một link mời. Link có dạng `https://…/j/…`, **chỉ dùng được một lần, trong 15 phút**.
-2. **Cách dễ nhất, trên trang văn phòng**: mở **Cài đặt → Khác**, mục **Team**: dán link mời, gõ tên (để trống thì lấy
-   tên git), bấm **Vào team**. Nút **Toà nhà** hiện lên trên thanh trên cùng sau vài giây. Chỉ làm được trên máy chạy
-   văn phòng, không làm được từ điện thoại.
+**Lên bản mới**: `node ~/my-office/bin/cli.mjs update`: lấy bản mới, build, khởi động lại văn phòng. Lệnh dừng lại nếu
+bạn có sửa gì trong thư mục đó.
 
-   Hoặc chạy lệnh:
+**Kiểm tra khi có gì lạ**: `node ~/my-office/bin/cli.mjs doctor`.
 
-   ```bash
-   node bin/cli.mjs team join <link mời>
-   ```
-
-   Tên của bạn trong team lấy theo `git config user.name`. Muốn dùng tên khác thì thêm `--me "Tên bạn"`.
-3. Kiểm tra:
-
-   ```bash
-   node bin/cli.mjs team status
-   ```
-
-   Lệnh này in ra tên team, tên của bạn, chế độ phòng và danh sách thành viên.
-
-Mở link mời bằng trình duyệt thì chỉ thấy một trang chữ hướng dẫn. Link chỉ có tác dụng khi dán vào **Cài đặt → Khác
-→ Team** hoặc dùng với lệnh `team join`.
-
-Người đã cài My Office từ trước thì `git pull`, `npm run build`, rồi khởi động lại văn phòng để có mục này.
+Mọi lệnh `node bin/cli.mjs …` ở dưới chạy **trong thư mục `my-office`**.
 
 ## 3. Phòng của bạn: mở, đóng, tạm dừng
 
@@ -197,6 +201,9 @@ máy.
 | Mã xem đã được dùng / đã hết hạn / không tồn tại | Xin chủ phòng một mã mới |
 | Vừa nhập sai mã nhiều quá / gõ cửa nhiều quá | Đợi 10 phút rồi thử lại |
 | Chỉ người tạo team mới làm được việc này | Nhờ người tạo team tạo link mời |
+| Lệnh cài báo cần Node 22 | `brew install node@22` (hoặc `nvm install 22`), mở Terminal mới, chạy lại lệnh |
+| Lệnh cài báo thư mục đã có nhưng không phải My Office | Chọn chỗ khác: thêm `MY_OFFICE_DIR=~/thu-muc-khac` trước `bash` |
+| Bấm "Mở My Office để vào team" mà không mở được | Văn phòng chưa chạy: dùng dòng lệnh "Chưa có My Office" trên trang (chạy lại không sao) |
 | Gõ cửa báo `not-found` | Hub chưa lên bản mới (0.3.0): báo người quản lý hub chạy `cd hub && npm run deploy` |
 
 ---
@@ -224,6 +231,9 @@ node bin/cli.mjs team create --hub https://my-office-hub.<tài-khoản>.workers.
 Sau đó `team invite` để mời từng người.
 
 **Cập nhật hub khi có bản mới**: `git pull`, rồi `cd hub && npm run deploy`. Dữ liệu team giữ nguyên.
+
+Trang của link mời dùng lệnh cài ở `SETUP_URL` (mặc định `setup.sh` trên nhánh `main` của GitHub). Hub tự dựng thì đặt
+biến `SETUP_URL` trong `wrangler.toml` (`[vars]`) nếu dùng bản fork.
 
 **Cài đặt của team** (chỉ người tạo team): `node bin/cli.mjs team policy details on|off` để cho phòng mở hiện hoặc ẩn tên
 file và câu lệnh. Chi tiết kỹ thuật (API, chữ ký, dữ liệu, giới hạn):

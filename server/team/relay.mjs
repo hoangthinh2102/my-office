@@ -65,7 +65,12 @@ export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => 
     if (typeof WebSocket !== 'function') { why = 'node'; log('team: needs Node 22 or newer (WebSocket)'); return; }
     (async () => {
       const keys = await loadKeys(dataDir, team.keyStore);
-      if (!keys) { why = 'no-key'; log('team: this computer has no team key; my-office team restore, or leave --local'); return; }
+      // no key: gone for good (restore, or leave --local), or only out of reach for now (the macOS keychain locks with
+      // the screen or in sleep): either way, try again later rather than stay offline until a restart
+      if (!keys) {
+        if (why !== 'no-key') log('team: this computer has no team key right now (locked keychain?); trying again. If it stays: my-office team restore, or leave --local');
+        why = 'no-key'; changed(); scheduleRetry(); return;
+      }
       const sock = new WebSocket(await signedWsUrl(keys, team.hub, team.teamId, now()));
       ws = sock;
       sock.addEventListener('open', () => {

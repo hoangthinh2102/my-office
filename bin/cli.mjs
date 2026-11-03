@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // My Office command line: start the server, add/remove the Claude Code hooks, install the login service, and
 // check that everything is wired ("doctor"). Settings are backed up before every change and written atomically.
+// "setup" does a whole first install in one go (setup.sh runs it), "update" brings a clone up to date.
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync, spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createPrefs } from '../server/prefs.mjs';
 import { serviceFor } from './service.mjs';
@@ -16,7 +17,7 @@ const PORT = Number(process.env.OFFICE_PORT || 4310);
 // Words in the office's language (data/prefs.json, picked in Settings; OFFICE_LANG until then), same folder as the server's.
 // the server's data folder (OFFICE_DATA_DIR for a second copy; the launchd service and the hooks always use data/)
 const DATA_DIR = process.env.OFFICE_DATA_DIR ? path.resolve(process.env.OFFICE_DATA_DIR) : path.join(ROOT, 'data');
-const { tr } = createPrefs(DATA_DIR);
+const prefs = createPrefs(DATA_DIR), { tr } = prefs;
 const minutesAgo = (ms) => tr('time.ago', { time: tr('time.min', { n: Math.max(0, Math.round((Date.now() - ms) / 60000)) }) });
 const args = process.argv.slice(2), cmd = args[0] && !args[0].startsWith('-') ? args[0] : 'start';
 const opt = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] || true : null; };
@@ -56,13 +57,30 @@ async function writeSettings(cfg) {
 }
 const SERVER = path.join(ROOT, 'server', 'index.mjs');
 // The page is a Next.js build: make it once (and after an update) before the server can show the office.
-function ensureBuild() {
-  if (fs.existsSync(path.join(ROOT, '.next', 'BUILD_ID'))) return;
+// The commit it was built from is kept next to it, so an update knows to build again.
+const STAMP = path.join(ROOT, '.next', 'office-commit');
+const git = (...a) => { try { return execFileSync('git', ['-C', ROOT, ...a], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return ''; } };
+function ensureBuild(force = false) {
+  if (!force && fs.existsSync(path.join(ROOT, '.next', 'BUILD_ID'))) return;
   console.log(tr('cli.building'));
   execFileSync(process.execPath, [path.join(ROOT, 'node_modules', 'next', 'dist', 'bin', 'next'), 'build'], { cwd: ROOT, stdio: 'inherit', env: { ...process.env, NEXT_TELEMETRY_DISABLED: '1' } });
+  try { fs.writeFileSync(STAMP, `${git('rev-parse', 'HEAD')}\n`); } catch { /* not a clone */ }
 }
+const builtFrom = () => { try { return fs.readFileSync(STAMP, 'utf8').trim(); } catch { return ''; } };
+const waitUp = async (sec = 40) => {
+  for (let i = 0; i < sec * 2; i++) {
+    try { if ((await fetch(`http://127.0.0.1:${PORT}/health`, { signal: AbortSignal.timeout(1000) })).ok) return true; } catch { /* not yet */ }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return false;
+};
+const openPage = (url) => {
+  const how = process.platform === 'darwin' ? 'open' : process.platform === 'linux' ? 'xdg-open' : null;
+  if (!how) return false;
+  try { spawn(how, [url], { stdio: 'ignore', detached: true }).on('error', () => {}).unref(); return true; } catch { return false; }
+};
 
-async function install() {
+async function install({ withService = args.includes('--service') } = {}) {
   console.log(tr('cli.install.title'));
   const cfg = await readSettings(); cfg.hooks ||= {};
   let added = 0;
@@ -82,7 +100,7 @@ async function install() {
     added++;
   }
   if (added) { await writeSettings(cfg); ok(tr('cli.install.added', { n: added, file: SETTINGS })); } else ok(tr('cli.install.already'));
-  if (args.includes('--service') && !opt('--settings')) {
+  if (withService && !opt('--settings')) {
     await fsp.mkdir(path.join(ROOT, 'data'), { recursive: true });
     ensureBuild();
     const svc = service();
@@ -91,6 +109,74 @@ async function install() {
   }
   console.log(`\n${tr('cli.install.next', { port: PORT })}`);
 }
+/* ---------- the whole first install in one go (setup.sh runs this after cloning and npm ci) ----------
+   my-office setup [--join <invite link>] [--name <your name>] [--lang vi|en] [--lan] [--no-open] */
+async function setup() {
+  const lang = opt('--lang');
+  if (typeof lang === 'string') prefs.setLang(lang);   // (the office's language, before the service starts)
+  console.log(`${tr('cli.setup.title')}\n`);
+  const major = Number(process.versions.node.split('.')[0]);
+  if (major < 22) { bad(tr('cli.setup.node', { version: process.versions.node })); process.exitCode = 1; return; }
+  ok(tr('cli.setup.nodeOk', { version: process.versions.node }));
+  if (!fs.existsSync(path.dirname(SETTINGS))) warn(tr('cli.setup.noClaude'));
+  await install({ withService: true });
+  const up = await waitUp();
+  up ? ok(tr('cli.setup.running', { port: PORT })) : warn(tr('cli.setup.notUp'));
+  // the team, with the invite link from the hub's page
+  const link = opt('--join');
+  let joinedTo = null, retry = null;
+  if (typeof link === 'string') {
+    const { createTeamClient, TeamError } = await import('../server/team/client.mjs');
+    const client = createTeamClient({ dataDir: DATA_DIR }), now = await client.readState();
+    if (now) ok(tr('cli.setup.inTeam', { team: now.teamName, name: now.name }));
+    else {
+      try {
+        const name = opt('--name');
+        const s = await client.join({ link, name: typeof name === 'string' ? name : undefined });
+        joinedTo = s; ok(tr('cli.team.joined', { team: s.teamName, name: s.name }));
+      } catch (e) {
+        if (!(e instanceof TeamError)) throw e;
+        const key = `cli.team.err.${e.code}`, text = tr(key);
+        warn(`${text === key ? tr('cli.team.err.other', { code: e.code }) : text} ${tr('cli.setup.joinLater')}`);
+        retry = link;
+      }
+    }
+  }
+  const url = `http://localhost:${PORT}/${retry ? `?join=${encodeURIComponent(retry)}` : ''}`;
+  if (up && !args.includes('--no-open') && openPage(url)) ok(tr('cli.setup.opened', { url }));
+  console.log(`\n${tr('cli.setup.done', { url: `http://localhost:${PORT}` })}`);
+  console.log(`  ${tr('cli.setup.newSession')}`);
+  if (joinedTo) console.log(`  ${tr('cli.setup.roomClosed')}`);
+  console.log(`  ${tr('cli.setup.later')}\n`);
+}
+
+/* ---------- bringing a clone up to date: pull, install packages if they changed, build, restart ---------- */
+async function update() {
+  console.log(`${tr('cli.update.title')}\n`);
+  if (!git('rev-parse', 'HEAD')) { bad(tr('cli.update.notClone')); process.exitCode = 1; return; }
+  if (git('status', '--porcelain', '--untracked-files=no')) { bad(tr('cli.update.changed', { dir: ROOT })); process.exitCode = 1; return; }
+  const before = git('rev-parse', 'HEAD');
+  try { execFileSync('git', ['-C', ROOT, 'pull', '--ff-only', '--quiet'], { stdio: ['ignore', 'inherit', 'inherit'] }); } catch { bad(tr('cli.update.pullFailed')); process.exitCode = 1; return; }
+  const after = git('rev-parse', 'HEAD');
+  if (before === after && builtFrom() === after && !args.includes('--force')) { ok(tr('cli.update.latest', { commit: after.slice(0, 7) })); return; }
+  if (before !== after) {
+    ok(tr('cli.update.pulled', { from: before.slice(0, 7), to: after.slice(0, 7) }));
+    for (const line of git('log', '--format=%s', `${before}..${after}`).split('\n').filter(Boolean).slice(0, 8)) console.log(`      · ${line}`);
+    if (git('diff', '--name-only', before, after).split('\n').includes('package-lock.json')) {
+      console.log(tr('cli.update.packages'));
+      execSync('npm ci --no-audit --no-fund --loglevel=error', { cwd: ROOT, stdio: 'inherit' });
+    }
+  }
+  ensureBuild(true);
+  const svc = service();
+  let mine = false; try { mine = fs.readFileSync(svc.file, 'utf8').includes(ROOT); } catch { /* none */ }
+  if (mine && (await svc.state()) !== 'missing') {   // (only the service that runs this folder: another clone's is left alone)
+    try { execSync(svc.restart, { stdio: 'ignore' }); } catch { /* reported below */ }
+    (await waitUp()) ? ok(tr('cli.update.restarted', { port: PORT })) : warn(tr('cli.update.notUp', { cmd: svc.restart }));
+  } else ok(tr('cli.update.noService'));
+  console.log(`\n${tr('cli.update.done')}\n`);
+}
+
 async function uninstall() {
   console.log(tr('cli.uninstall.title'));
   const cfg = await readSettings(); let removed = 0;
@@ -289,6 +375,6 @@ async function team() {
     process.exitCode = 1;
   }
 }
-const run = { start, install, uninstall, doctor, pin, team }[cmd];
+const run = { start, install, setup, update, uninstall, doctor, pin, team }[cmd];
 if (!run) { console.log(tr('cli.usage')); process.exit(1); }
 Promise.resolve(run()).catch((e) => { console.error(tr('cli.error', { message: e.message })); process.exit(1); });

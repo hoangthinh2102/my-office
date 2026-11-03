@@ -119,6 +119,11 @@ export const hubBase = (url) => {
 };
 export const formatInvite = (hub, teamId, code) => `${hubBase(hub)}/j/${teamId}.${code}`;
 /** { hub, teamId, code } from an invite link, or null. */
+/** The invite link in a page address's query (?join=…, from the hub's invite page), or null when there is none or it isn't one. */
+export function inviteFromSearch(search) {
+  const link = new URLSearchParams(search).get('join');
+  return link && parseInvite(link) ? link.trim() : null;
+}
 export function parseInvite(link) {
   try {
     const u = new URL(String(link).trim());

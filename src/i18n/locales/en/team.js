@@ -70,6 +70,8 @@ export default {
     phone: 'Join a team on the computer the office runs on.',
     youAreIn: 'You are in "{team}" as {name}.',
     open: 'Open the building',
+    filled: 'Invite link filled in: type your name and press Join the team.',
+    already: 'This computer is already in team "{team}". One computer is in one team at a time.',
     joined: 'You joined "{team}" as {name}. Your room starts closed.',
     failed: "Couldn't join: {why}",
     err: {

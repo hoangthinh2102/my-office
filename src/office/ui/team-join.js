@@ -6,9 +6,11 @@ import { $, el } from '../core/env.js';
 import { icon } from './icons.js';
 import { toast } from './activity.js';
 import { post } from './team-access.js';
+import { openSettings } from './settings.js';
+import { inviteFromSearch } from '../../../shared/team-protocol.js';
 import { t as tr } from '../../i18n/index.js';
 
-let apply = () => {}, lastInvite = null;
+let apply = () => {}, lastInvite = null, pendingJoin = null;
 /** team.js hands over how to show a new team state (its onTeam). */
 export function setApply(fn) { apply = fn; }
 const demo = () => state.team?.team?.id === 'demo';
@@ -39,10 +41,22 @@ export function syncJoin(t) {
   }
   // Settings → More: join with a link, or which team you are in
   const box = $('st-team'); if (!box) return;
+  if (pendingJoin && t) showPendingJoin(t);
   $('st-team-in').hidden = !inTeam;
   if (inTeam) $('st-team-name-now').textContent = tr('team.join.youAreIn', { team: t.team?.name || '', name: t.me?.name || '' });
   $('st-team-join').hidden = inTeam || !local();
   $('st-team-phone').hidden = inTeam || local();
+}
+
+// an invite opened from the hub's page: Settings → More → Team with the link filled in. Joining still takes a click.
+function showPendingJoin(t) {
+  const link = pendingJoin; pendingJoin = null;
+  if (t.inTeam) { toast(tr('team.join.already', { team: t.team?.name || '' }), 6000); return; }
+  openSettings('more');
+  if (!local()) return;
+  $('st-team-link').value = link;
+  setTimeout(() => $('st-team-name')?.focus(), 50);
+  toast(tr('team.join.filled'), 6000);
 }
 
 async function makeInvite() {
@@ -68,5 +82,10 @@ export function setup() {
   $('team-invite-make')?.addEventListener('click', makeInvite);
   $('st-team-join')?.addEventListener('submit', join);
   $('st-team-open')?.addEventListener('click', () => { $('st-close')?.click(); $('btn-team')?.click(); });
+  if (new URLSearchParams(location.search).has('join')) {
+    pendingJoin = inviteFromSearch(location.search);
+    const u = new URL(location.href); u.searchParams.delete('join'); history.replaceState(null, '', u);   // (not kept in the address or history)
+    if (!pendingJoin) toast(tr('team.join.err.bad-invite'), 6000);
+  }
   syncJoin(state.team);
 }
