@@ -8,13 +8,13 @@ import { BULB_OFF, metal, potPlant } from '../terrace.js';
 
 export let roomPlants;
 /* floor lamps: warm glow at night */
-function floorLamp(x, z, h = 2.1) {
-  const g = new THREE.Group(); g.position.set(x, 0, z); scene.add(g);
+export function floorLamp(x, z, h = 2.1, parent = scene, bulbs = lampBulbs) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); parent.add(g);
   put(g, cyl(0.22, 0.26, 0.06, metal), 0, 0.03, 0);
   put(g, cyl(0.03, 0.03, h, metal, 8), 0, h / 2, 0);
   const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.36, 0.38, 24, 1, true), mat('#F6E3BE', { side: THREE.DoubleSide, roughness: 0.9 }));
   shade.castShadow = true; put(g, shade, 0, h + 0.1, 0);
-  const bulbM = new THREE.MeshBasicMaterial({ color: BULB_OFF.clone() }); lampBulbs.push(bulbM); g.userData.bulb = lampBulbs.length - 1;
+  const bulbM = new THREE.MeshBasicMaterial({ color: BULB_OFF.clone() }); bulbs.push(bulbM); g.userData.bulb = bulbs.length - 1; g.userData.bulbM = bulbM;
   put(g, new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), bulbM), 0, h - 0.02, 0);
   return g;
 }

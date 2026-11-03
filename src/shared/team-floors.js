@@ -50,3 +50,9 @@ export function seatPeople(people, prev = new Map(), n = SEATS_PER_ROOM) {
 
 /** A room's shadows behind smart glass (a closed room): how many, at most a seat each. */
 export const silhouettes = (room, n = SEATS_PER_ROOM) => Math.min(n, headcount(room));
+
+/** Each floor's look (world/tower-floor.js), in turn from floor 1: the same for everyone who looks at it. */
+export const FLOOR_THEMES = ['studio', 'garden', 'library'];
+export const themeOf = (n) => FLOOR_THEMES[(Math.max(1, Math.floor(Number(n)) || 1) - 1) % FLOOR_THEMES.length];
+/** Seats in each room's break corner (its sofa, bean bags or armchairs): who is resting may sit there. */
+export const BREAK_SEATS = 2;

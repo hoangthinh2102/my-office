@@ -274,7 +274,7 @@ export function setup() {
     const r = renderer.domElement.getBoundingClientRect();
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
     ray.setFromCamera(ndc, fp.on ? fpCam : camera);
-    if (!fp.on && towerHover(ray)) { state.hovered = null; setHoverProp(null); renderer.domElement.classList.add('hovering'); return; }
+    if (!fp.on && towerHover(ray, e)) { state.hovered = null; renderer.domElement.classList.add('hovering'); return; }
     const per = pickPerson(), pr = pickProp();
     const p = pr && (!per || pr.d < per.d - 0.3) ? pr.prop : null;
     state.hovered = !p && per?.worker ? per.worker : null;

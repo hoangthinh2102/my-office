@@ -83,6 +83,8 @@ function textures() {
 export const offTexture = () => textures().off;
 
 const KIND_OF = { edit: 'code', write: 'code', bash: 'term', deploy: 'term', web: 'web', fetch: 'web', mcp: 'web', read: 'read', grep: 'read', glob: 'read', skill: 'read' };
+/** What a screen shows for a kind of work (a tool's type: 'edit', 'bash', …): a team floor's desks (world/tower-floor.js). */
+export const kindOfAct = (type) => KIND_OF[type] || 'chat';
 // what a desk's screen should show for its session (s) and person (w)
 export function screenKind(s, w) {
   if (!s || !w) return 'off';

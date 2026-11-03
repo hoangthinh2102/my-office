@@ -16,8 +16,8 @@ let posterTex;
 /* bookshelf with decor on top */
 const BOOK_COLORS = ['#C8553D', '#F28F3B', '#588B8B', '#2F4858', '#FFD166', '#8E5BB5', '#6A8042', '#E07A5F', '#3D5A80', '#EDE6D6'];
 // A 3.7 m wall shelf full of books (w narrows it), back against the wall behind it, plants on top.
-function makeShelf(x, z, ry = 0, w = 3.7, top = true) {
-  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; scene.add(g);
+export function makeShelf(x, z, ry = 0, w = 3.7, top = true, parent = scene) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; parent.add(g);
   put(g, rbox(w, 2.7, 0.08, woodDark, 0.02), 0, 1.35, -0.28);
   put(g, rbox(0.12, 2.7, 0.62, woodDark, 0.03), -w / 2 + 0.03, 1.35, 0);
   put(g, rbox(0.12, 2.7, 0.62, woodDark, 0.03), w / 2 - 0.03, 1.35, 0);
@@ -36,8 +36,8 @@ function makeShelf(x, z, ry = 0, w = 3.7, top = true) {
   return g;
 }
 export let shelf;
-export function makeSofa(x, z, w, ry = 0, color = '#E3D6BF', pillows = ['#4E7D5B', '#E8742A']) {
-  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; scene.add(g);
+export function makeSofa(x, z, w, ry = 0, color = '#E3D6BF', pillows = ['#4E7D5B', '#E8742A'], parent = scene) {
+  const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; parent.add(g);
   const fabric = mat(color, { roughness: 0.95 }), legM = woodDark;
   put(g, rbox(w, 0.3, 0.82, fabric, 0.1), 0, 0.33, 0);
   put(g, rbox(w, 0.66, 0.24, fabric, 0.1), 0, 0.66, -0.3);

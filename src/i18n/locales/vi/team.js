@@ -80,6 +80,28 @@ export default {
     notHq: 'Toà nhà 3D có ở kiểu văn phòng Tập đoàn (Cài đặt → Văn phòng).',
     emptyFloor: 'Còn trống: mời đồng đội vào (Toà nhà → Mời người vào team)',
   },
+  // a team floor's furniture (world/tower-floor.js): what pointing at it says; a click plays on your screen only
+  tower: {
+    free: 'Phòng trống',
+    local: 'chỉ trên màn hình của bạn',
+    theme: { studio: 'Studio', garden: 'Khu vườn', library: 'Thư viện' },
+    props: {
+      plant: { name: 'Chậu cây', hint: 'Lay nhẹ cho lá rung' },
+      board: { name: 'Bảng sprint', hint: 'Bảng trang trí: việc thật của phòng xem ở thẻ phòng' },
+      cabinet: { name: 'Tủ thấp', hint: 'Bấm cho nó nảy nhẹ' },
+      sofa: { name: 'Sofa', hint: 'Góc nghỉ: ai đang nghỉ sẽ ra đây ngồi' },
+      table: { name: 'Bàn trà', hint: 'Bấm cho nó nảy nhẹ' },
+      beanbag: { name: 'Ghế lười', hint: 'Góc nghỉ: ai đang nghỉ sẽ ra đây ngồi' },
+      armchair: { name: 'Ghế bành', hint: 'Góc đọc sách: ai đang nghỉ sẽ ra đây ngồi' },
+      shelf: { name: 'Kệ sách', hint: 'Bấm cho nó nảy nhẹ' },
+      planter: { name: 'Bồn cây', hint: 'Lay nhẹ cho lá rung' },
+      lamp: { name: 'Đèn cây', hint: 'Bật / tắt đèn' },
+      coffee: { name: 'Góc cà phê', hint: 'Pha một ly' },
+      cooler: { name: 'Bình nước', hint: 'Rót một cốc' },
+      aquarium: { name: 'Bể cá', hint: 'Cho cá ăn' },
+      bench: { name: 'Ghế băng', hint: 'Bấm cho nó nảy nhẹ' },
+    },
+  },
   card: { room: 'Phòng của {name}', readOnly: 'Chỉ xem: đây là phòng của người khác.' },
   readOnly: 'Chỉ xem: không ai giao việc được cho phòng khác.',
   // vào team và mời người mà không cần gõ lệnh (src/office/ui/team-join.js)

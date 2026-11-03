@@ -18,13 +18,13 @@ export function cyl(rt, rb, h, m, seg = 20) { const mesh = new THREE.Mesh(new TH
 export function put(parent, mesh, x, y, z) { mesh.position.set(x, y, z); parent.add(mesh); return mesh; }
 // Each rug sits a hair above the previous one, so overlapping rugs never z-fight.
 let rugY = 0.004;
-export function rug(x, z, w, d, color, r = 0.35) {
+export function rug(x, z, w, d, color, r = 0.35, parent = scene) {
   const s = new THREE.Shape(), hw = w / 2, hd = d / 2;
   s.moveTo(-hw + r, -hd); s.lineTo(hw - r, -hd); s.quadraticCurveTo(hw, -hd, hw, -hd + r);
   s.lineTo(hw, hd - r); s.quadraticCurveTo(hw, hd, hw - r, hd); s.lineTo(-hw + r, hd);
   s.quadraticCurveTo(-hw, hd, -hw, hd - r); s.lineTo(-hw, -hd + r); s.quadraticCurveTo(-hw, -hd, -hw + r, -hd);
   const m = new THREE.Mesh(new THREE.ExtrudeGeometry(s, { depth: 0.025, bevelEnabled: false, curveSegments: 8 }), noOutline(mat(color)));
-  m.rotation.x = -Math.PI / 2; m.position.set(x, rugY, z); rugY += 0.0015; m.receiveShadow = true; scene.add(m); return m;
+  m.rotation.x = -Math.PI / 2; m.position.set(x, rugY, z); rugY += 0.0015; m.receiveShadow = true; parent.add(m); return m;
 }
 // Shrinks the canvas font (its px size) just enough for text to fit in maxW; text that already fits is left as drawn.
 // Used where a translation may run longer than the sign or screen it is painted on.
