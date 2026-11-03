@@ -31,6 +31,9 @@ Claude Code ──hooks (curl, loopback only)──▶ server/index.mjs ──SS
 | `agent-support.mjs` | Reads what the agent-support skills leave on this computer (`~/.agent-support`): the workspace's repos, each Lark task's state, the log of MRs opened; ties performance jobs to Lark tasks. Read only. |
 | `perf.mjs` | The performance board: one line per job (a prompt until Stop) in `data/perf/YYYY-MM-DD.jsonl` with its tokens, API-price cost, time, tool failures and overtime; per-person scores (`/api/perf`). |
 | `prefs.mjs` | The office's language (`data/prefs.json`, `OFFICE_LANG`) and the server's translator `tr()`. |
+| `team/identity.mjs`, `team/client.mjs` | Team mode ([docs/features/team-mode.md](features/team-mode.md)): this computer's team key (the macOS keychain, else `data/team-key`) and the signed calls to the team hub (`my-office team …`). The protocol itself is `shared/team-protocol.js`, used by the hub too. |
+
+The team hub is its own small program in `hub/`: a Cloudflare Worker with one Durable Object (SQLite) per team. `hub/src/core.js` holds the rules and runs under Node's SQLite in the unit tests.
 
 `bin/cli.mjs` installs the hooks (curl on macOS and Linux, `hooks/send.mjs` on Windows) and, through `bin/service.mjs`, the
 background service: launchd, a systemd user service, or a script in the Windows Startup folder.

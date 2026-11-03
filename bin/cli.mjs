@@ -175,6 +175,59 @@ function start() {
   process.env.NODE_ENV ||= 'production';
   return import(SERVER);
 }
-const run = { start, install, uninstall, doctor, pin }[cmd];
+/* ---------- team mode (docs/features/team-mode.md) ----------
+   my-office team create --hub <url> --name <team> [--me <your name>] [--token <hub's create token>]
+   my-office team invite | join <invite link> [--me <name>] | status | leave [--local] | restore <recovery key> */
+async function team() {
+  const { createTeamClient, TeamError } = await import('../server/team/client.mjs');
+  const client = createTeamClient({ dataDir: DATA_DIR });
+  const sub = args[1], arg = args[2] && !args[2].startsWith('-') ? args[2] : null;
+  const val = (name) => { const v = opt(name); return typeof v === 'string' ? v : null; };
+  const until = (ms) => new Date(ms).toLocaleTimeString(tr('cli.team.locale'), { hour: '2-digit', minute: '2-digit' });
+  const where = (s) => tr(s.keyStore === 'keychain' ? 'cli.team.keyKeychain' : 'cli.team.keyFile');
+  try {
+    if (sub === 'create') {
+      const hub = val('--hub'), name = val('--name');
+      if (!hub || !name) { console.log(tr('cli.team.usage')); process.exitCode = 1; return; }
+      const { state, recovery } = await client.create({ hub, team: name, name: val('--me'), token: val('--token') });
+      ok(tr('cli.team.created', { team: state.teamName, name: state.name }));
+      ok(where(state));
+      console.log(`\n  ${tr('cli.team.recoveryTitle')}\n\n    ${recovery}\n\n  ${tr('cli.team.recoveryKeep')}\n`);
+      console.log(`  ${tr('cli.team.nextInvite')}`);
+    } else if (sub === 'invite') {
+      const r = await client.invite();
+      console.log(`\n  ${tr('cli.team.inviteTitle', { time: until(r.expiresAt) })}\n\n    ${r.invite}\n\n  ${tr('cli.team.inviteHow')}\n`);
+    } else if (sub === 'join') {
+      if (!arg) { console.log(tr('cli.team.usage')); process.exitCode = 1; return; }
+      const s = await client.join({ link: arg, name: val('--me') });
+      ok(tr('cli.team.joined', { team: s.teamName, name: s.name }));
+      ok(where(s));
+    } else if (sub === 'status') {
+      const st = await client.readState();
+      if (!st) { console.log(`  ${tr('cli.team.none')}`); return; }
+      const r = await client.status();
+      console.log(tr('cli.team.statusTitle', { team: r.team.name, hub: r.state.hub }));
+      ok(tr('cli.team.you', { name: r.me.name, room: tr(`cli.team.room.${r.state.room?.mode || 'closed'}`) }));
+      console.log(`  ${tr('cli.team.members', { n: r.members.length })}`);
+      for (const m of r.members) console.log(`    · ${m.name}${m.id === r.me.id ? ` (${tr('cli.team.itsYou')})` : ''}`);
+    } else if (sub === 'leave') {
+      await client.leave({ local: args.includes('--local') });
+      ok(tr('cli.team.left'));
+    } else if (sub === 'restore') {
+      if (!arg) { console.log(tr('cli.team.usage')); process.exitCode = 1; return; }
+      const s = await client.restore({ recovery: arg });
+      ok(tr('cli.team.restored', { team: s.teamName, name: s.name }));
+      ok(where(s));
+    } else {
+      console.log(tr('cli.team.usage')); process.exitCode = 1;
+    }
+  } catch (e) {
+    if (!(e instanceof TeamError)) throw e;
+    const key = `cli.team.err.${e.code}`, text = tr(key);
+    bad(text === key ? tr('cli.team.err.other', { code: e.code }) : text);
+    process.exitCode = 1;
+  }
+}
+const run = { start, install, uninstall, doctor, pin, team }[cmd];
 if (!run) { console.log(tr('cli.usage')); process.exit(1); }
 Promise.resolve(run()).catch((e) => { console.error(tr('cli.error', { message: e.message })); process.exit(1); });

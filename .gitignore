@@ -24,3 +24,6 @@ playwright-report/
 # 3D models of your own (docs/3D-ASSETS.md): kept out of git unless you choose to add them
 public/assets/models/*
 !public/assets/models/manifest.example.json
+
+# the team hub (hub/): wrangler's local state
+hub/.wrangler/

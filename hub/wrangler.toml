@@ -1,0 +1,18 @@
+# The My Office team hub (docs/features/team-mode.md). Run it locally with `npm run dev`; deploy with `npm run deploy`
+# after `npx wrangler login`.
+name = "my-office-hub"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# one Durable Object per team, with SQLite storage (the only kind the Workers Free plan has)
+[[durable_objects.bindings]]
+name = "TEAM"
+class_name = "Team"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Team"]
+
+# Optional: only people who know this token can create a team on this hub. Set it with
+#   npx wrangler secret put CREATE_TOKEN
+# and pass it to `my-office team create --token <token>`.
