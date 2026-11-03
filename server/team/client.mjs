@@ -13,6 +13,12 @@ function hubOf(url) {
   try { return hubBase(url); } catch (e) { throw new TeamError(e.message === 'hub-not-https' ? 'hub-not-https' : 'bad-hub-url'); }
 }
 
+// the end of today on this computer's clock (a grant "for the rest of the day")
+export function endOfDay(now = new Date()) {
+  const d = new Date(now); d.setHours(24, 0, 0, 0);
+  return d.getTime();
+}
+
 export class TeamError extends Error {
   constructor(code, status = 0) { super(code); this.code = code; this.status = status; }
 }
@@ -48,6 +54,10 @@ export function createTeamClient({ dataDir, fetch = globalThis.fetch }) {
     const keys = await loadKeys(dataDir, s.keyStore);
     if (!keys) throw new TeamError('no-key');
     return { s, keys };
+  }
+  async function hubCall(method, action, body) {
+    const { s, keys } = await current();
+    return call(s.hub, keys, method, `/t/${s.teamId}/${action}`, method === 'GET' ? null : body);
   }
   async function notInTeam() { if (await readState()) throw new TeamError('already-in-team'); }
   // keep what the hub said about us, with the keys stored where this computer keeps them
@@ -126,6 +136,19 @@ export function createTeamClient({ dataDir, fetch = globalThis.fetch }) {
       const { s, keys } = await current();
       return (await call(s.hub, keys, 'POST', `/t/${s.teamId}/policy`, { details: !!details })).policy;
     },
+
+    // Closed rooms (step 4): knocking on someone's door, answering knocks on yours, view codes, who may look in.
+    /** Asks to see `room`'s closed room. */
+    async knock(room) { return hubCall('POST', 'knock', { room: String(room || '') }); },
+    /** Answers a knock on this room: grant 'no' | 'hour' | 'day' | 'always'; 'day' ends at `dayEnd` (this computer's midnight). */
+    async answer({ viewer, grant, dayEnd = endOfDay() }) { return hubCall('POST', 'answer', { viewer: String(viewer || ''), grant, dayEnd }); },
+    async revoke(viewer) { return hubCall('POST', 'revoke', { viewer: String(viewer || '') }); },
+    /** A one-time code to see this room: { code, expiresAt }. */
+    async viewCode() { return hubCall('POST', 'code', {}); },
+    /** Uses someone's view code: { room: { id, name }, until }. */
+    async redeem(code) { return hubCall('POST', 'redeem', { code: String(code || '') }); },
+    /** Who may see this room, who is knocking, and its access log. */
+    async access() { return hubCall('GET', 'access'); },
 
     /** Becomes the member a recovery key belongs to, on this computer. */
     async restore({ recovery }) {

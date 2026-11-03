@@ -3,11 +3,11 @@
 // shows comes from the server's relay (server/team/relay.mjs) in the live stream ({k:'team'}), or from demo mode.
 import { state } from '../core/state.js';
 import { $, HQ, el, fmtAgo, nowMs } from '../core/env.js';
-import { TOKEN } from '../net/live.js';
 import { PALETTE, hash } from '../people/workers.js';
 import { TYPE_ICON, icon } from './icons.js';
 import { toast } from './activity.js';
-import { floorsOf, latest, stateOf } from '../../shared/team-floors.js';
+import { floorsOf, latest, seesIn, stateOf } from '../../shared/team-floors.js';
+import { fillAccess, knockBlock, noticeKnocks, post, setApply } from './team-access.js';
 import { syncLift } from './team-lift.js';
 import { goTower } from '../world/team-tower.js';
 import { t as tr } from '../../i18n/index.js';
@@ -16,13 +16,14 @@ let modal, demoSet = null;
 const isOpen = () => modal && !modal.hidden;
 const team = () => state.team || null;
 
-/** The relay's state ({ inTeam, team, me, room, connected, policy, rooms }), from the stream or demo mode. */
+/** The relay's state ({ inTeam, team, me, room, connected, policy, rooms, grants, knocks, asks, answers }), from the stream or demo mode. */
 export function onTeam(t) {
   state.team = t || null;
   const btn = $('btn-team');
   if (btn) btn.hidden = !t?.inTeam;
   if (!t?.inTeam && isOpen()) close();
   if (isOpen()) render();
+  noticeKnocks(state.team);   // (a knock on your door: a toast, and a badge on the building button)
   syncLift(state.team);   // the 3D building (headquarters plan)
 }
 /** Demo mode changes its own pretend room instead of asking the server. */
@@ -31,12 +32,6 @@ export function setDemoRoom(fn) { demoSet = fn; }
 function open() { if (!team()?.inTeam) return; modal.hidden = false; $('btn-team')?.setAttribute('aria-pressed', 'true'); render(); }
 function close() { modal.hidden = true; $('btn-team')?.setAttribute('aria-pressed', 'false'); }
 
-const post = async (path, body) => {
-  const r = await fetch(`${path}${TOKEN ? `?k=${encodeURIComponent(TOKEN)}` : ''}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  const j = await r.json().catch(() => ({}));
-  if (!j.ok) throw new Error(j.code || j.message || r.status);
-  return j;
-};
 // the team's setting (creator only; the hub checks it too): may open rooms show file names and commands?
 async function setDetails(on) {
   if (demoSet) { demoSet({ details: on }); return; }
@@ -78,6 +73,7 @@ function render() {
   const sw = $('team-policy-in'); sw.checked = details; sw.disabled = !local;
   $('team-mine').querySelector('.team-owner')?.remove();
   if (owner) $('team-mine').querySelector('.team-mine-head b').append(el('span', 'team-owner', tr('team.owner')));
+  fillAccess(t);
   $('team-3d-note').textContent = HQ ? tr('team.lift.hint') : tr('team.lift.notHq');
   // everyone else's, floor by floor
   const box = $('team-floors'), floors = floorsOf(t.rooms);
@@ -106,11 +102,13 @@ function roomCard(r) {
   const names = el('div', 'team-room-names');
   names.append(el('b', null, r.member.name), el('small', null, st === 'offline' ? tr('team.offline') : counts(r.counts)));
   const badge = el('span', `team-badge is-${st}`);
-  badge.append(icon(st === 'open' ? 'door' : st === 'closed' ? 'lock' : 'moon'), document.createTextNode(st === 'open' ? tr('team.roomOpen') : st === 'closed' ? tr('team.roomClosed') : tr('team.offline')));
+  badge.append(icon(st === 'open' ? 'door' : st === 'shared' ? 'users' : st === 'closed' ? 'lock' : 'moon'), document.createTextNode(tr(st === 'open' ? 'team.roomOpen' : st === 'shared' ? 'team.roomShared' : st === 'closed' ? 'team.roomClosed' : 'team.offline')));
   head.append(ava, names, badge);
   card.append(head);
   if (st === 'closed') card.append(el('p', 'team-closed', tr('team.closedNote')));
-  if (st === 'open') {
+  const access = knockBlock(r, st);   // (closed: knock to ask; let in: for how long)
+  if (access) card.append(access);
+  if (seesIn(st)) {
     const people = r.people || [];
     if (!people.length) card.append(el('p', 'team-closed', tr('team.nobody')));
     const list = el('ul', 'team-people');
@@ -148,6 +146,7 @@ export function setup() {
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && isOpen()) close(); });
   for (const b of modal.querySelectorAll('.team-seg-b')) b.addEventListener('click', () => { if (!b.classList.contains('is-sel')) setMine(b.dataset.mode); });
   $('team-policy-in')?.addEventListener('change', (e) => setDetails(e.target.checked));
+  setApply(onTeam);
   // "N min ago" stays true while the building is open
   setInterval(() => { if (isOpen()) render(); }, 30_000);
 }

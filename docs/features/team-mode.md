@@ -1,6 +1,6 @@
-# Chế độ team (bước 1–3b: danh tính, hub, relay, toà nhà)
+# Chế độ team (bước 1–4: danh tính, hub, relay, toà nhà, phòng đóng)
 
-> Lark task: — · PR: #1 (bước 1), #2 + #3 (bước 2), #4 (bước 3a), bước 3b: (điền khi tạo) · Ngày: 2026-11-03
+> Lark task: — · PR: #1 (bước 1), #2 + #3 (bước 2), #4 (bước 3a), #5 (bước 3b), bước 4: (điền khi tạo) · Ngày: 2026-11-03
 > Hướng dẫn cho người dùng: [docs/team-guide.md](../team-guide.md)
 
 ## Mục đích
@@ -22,7 +22,15 @@ dừng, bấm được ngay trên máy này) và phòng của mọi người, ch
 Bước 3b dựng **toà nhà 3D** (kiểu văn phòng Tập đoàn): các tầng của team xếp chồng trên cánh phòng ban, thang máy
 bên phải sân khấu để xem toàn nhà hoặc vào từng tầng. Panel có thêm cài đặt team cho người tạo team.
 
-Chưa có: gõ cửa / QR (bước 4), admin. Lộ trình ở cuối file.
+Bước 4 làm **phòng đóng**:
+- gõ cửa xin xem; chủ phòng cho xem 1 giờ / hết hôm nay / luôn (danh sách tin cậy) hoặc từ chối;
+- mã xem dùng một lần (10 ký tự, sống 10 phút, cho xem 1 giờ);
+- danh sách ai đang được xem, thu hồi ngay, nhật ký ra vào.
+
+Người được cho xem thấy phòng đóng như phòng mở: kính trong và nhân vật trong 3D, danh sách người trong bảng. Không làm
+QR (bỏ theo quyết định khi duyệt kế hoạch). Hub lên bản **0.3.0**: phải deploy lại hub.
+
+Chưa có: admin. Lộ trình ở cuối file.
 
 ## Cách sử dụng
 
@@ -40,6 +48,12 @@ Chưa có: gõ cửa / QR (bước 4), admin. Lộ trình ở cuối file.
 | `team pause` / `team resume` | Ngừng gửi mọi thứ lên hub (phòng hiện offline) / bật lại. |
 | `team rooms` | Các phòng đang thấy (đọc từ văn phòng đang chạy, `GET /api/team`). |
 | `team policy details on\|off` | Cài đặt của team, **chỉ người tạo team**: cho phòng mở hiện tên file và câu lệnh (đã che bí mật). Mặc định tắt. |
+| `team grants` | Bước 4: ai được xem phòng bạn (và đến khi nào), ai đang gõ cửa, 10 dòng nhật ký gần nhất. |
+| `team revoke <tên>` | Thôi cho người đó xem, có hiệu lực ngay. Trùng tên thì làm trên trang. |
+| `team code` | Mã xem dùng một lần (10 phút). Người dùng mã được xem 1 giờ. Tối đa 5 mã chưa dùng. |
+| `team redeem <mã>` | Dùng mã của đồng đội để xem phòng họ. |
+
+Gõ cửa và trả lời làm trên trang (bảng toà nhà), không có lệnh CLI.
 
 Tên mặc định lấy từ `git config --global user.name`, nếu không có thì lấy tên tài khoản máy.
 
@@ -108,6 +122,36 @@ Chỉ ở kiểu văn phòng **Tập đoàn** (`hq`); các kiểu khác chỉ c�
 
 Cùng điều kiện như `/api/team/room`: loopback, không qua tunnel, cùng origin, JSON.
 
+### Phòng đóng trong panel (bước 4)
+
+Code: `src/office/ui/team-access.js` (markup trong `TeamModal.tsx`).
+
+- **Phòng đóng của người khác**: thẻ phòng (trong bảng và thẻ 3D) có nút **Gõ cửa xin xem**. Sau khi gõ: "Đang chờ …
+  trả lời". Bị từ chối, hết giờ hoặc bị thu hồi thì hiện lý do và nút **Gõ cửa lại**.
+- **Được cho xem**: nhãn **Được mời xem** (màu xanh dương), dòng "còn x phút" / "đến 23:59" / "luôn được xem". Thấy người
+  trong phòng như phòng mở; trong 3D là kính trong và nhân vật.
+- **Phòng của bạn**, dưới cài đặt team:
+  - lượt gõ cửa với 4 nút: **1 giờ**, **Hết hôm nay**, **Luôn cho phép**, **Từ chối**;
+  - danh sách **Ai được xem phòng bạn**, mỗi người có nút **Thôi cho xem**;
+  - **Tạo mã xem**: hiện mã, giờ hết hạn, nút chép;
+  - ô **Mã của đồng đội** để dùng mã;
+  - **Nhật ký ra vào** (bấm mở mới tải, 50 dòng gần nhất).
+- Có người gõ cửa: toast một lần và số đỏ trên nút **Toà nhà**.
+- "Hết hôm nay" tính theo giờ trên máy chủ phòng (nửa đêm), tối đa 24 giờ.
+- Trên điện thoại chỉ xem: các nút bị khoá, giống phần mở / đóng phòng.
+
+| Method | Path | Body | Trả về |
+| --- | --- | --- | --- |
+| `POST` | `/api/team/knock` | `{ room }` | `{ ok, team }` |
+| `POST` | `/api/team/answer` | `{ viewer, grant: 'hour'\|'day'\|'always'\|'no' }` | `{ ok, team }` |
+| `POST` | `/api/team/revoke` | `{ viewer }` | `{ ok, team }` |
+| `POST` | `/api/team/code` | `{}` | `{ ok, code, expiresAt, team }` |
+| `POST` | `/api/team/redeem` | `{ code }` | `{ ok, room: { id, name }, until, team }` |
+| `GET` | `/api/team/access` | | `{ ok, grants, knocks, log }` |
+
+Lỗi: `{ ok: false, code }`, `code` là mã lỗi của hub. Các `POST` có cùng điều kiện như `/api/team/room` (loopback,
+không qua tunnel, cùng origin, JSON); `GET` chỉ loopback.
+
 ### API của hub
 
 Mọi yêu cầu (trừ `GET /` và `GET /j/…`) phải **có chữ ký** (xem *Chữ ký* bên dưới). Lỗi trả về `{ "error": "<mã>" }`.
@@ -122,6 +166,12 @@ Mọi yêu cầu (trừ `GET /` và `GET /j/…`) phải **có chữ ký** (xem 
 | GET | `/t/<team>/me` | thành viên | → 200 `{ team, me, members: [{ id, name, role, joinedAt }] }` |
 | POST | `/t/<team>/leave` | thành viên | → 200 `{ ok: true }`. Socket của người đó bị đóng (mã 4001), mọi người nhận `{ t: 'gone' }` |
 | POST | `/t/<team>/policy` | người tạo team | Body `{ details: boolean }` → 200 `{ policy }`. Người khác: 403 `not-owner` |
+| POST | `/t/<team>/knock` | thành viên | Body `{ room }` → 201 `{ knock: { room, at } }`; đang chờ sẵn thì 200, không báo lần hai |
+| POST | `/t/<team>/answer` | chủ phòng | Body `{ viewer, grant, dayEnd? }` → 200 `{ grants, knocks }` |
+| POST | `/t/<team>/revoke` | chủ phòng | Body `{ viewer }` → 200 `{ grants }` |
+| POST | `/t/<team>/code` | chủ phòng | → 201 `{ code, expiresAt }` |
+| POST | `/t/<team>/redeem` | thành viên | Body `{ code }` → 200 `{ room: { id, name }, until }`. Đang "luôn được xem" thì giữ nguyên |
+| GET | `/t/<team>/access` | chủ phòng | → 200 `{ grants, knocks, log }` (log: 50 dòng mới nhất của phòng mình) |
 | GET | `/t/<team>/ws?k&ts&n&sig&v` | thành viên | WebSocket. Chữ ký nằm trong query (ký `GET /t/<team>/ws`, body rỗng). Một socket cho mỗi thành viên: socket mới thay socket cũ (mã 4000) |
 
 Mã lỗi:
@@ -131,11 +181,11 @@ Mã lỗi:
 | 400 | `bad-request` | Body không phải JSON, thiếu tên, mã mời sai định dạng |
 | 401 | `unsigned`, `bad-signature`, `clock`, `replay` | Thiếu chữ ký, chữ ký sai, đồng hồ lệch hơn 60 giây, gửi lại một yêu cầu cũ |
 | 403 | `not-member`, `create-token`, `not-owner` | Khoá không thuộc thành viên nào còn trong team; thiếu hoặc sai token tạo team; không phải người tạo team |
-| 404 | `no-team`, `invite-unknown`, `not-found` | Team không tồn tại; mã mời không tồn tại; đường dẫn lạ |
-| 409 | `exists`, `already-member` | Team id đã có; khoá này đã là thành viên |
-| 410 | `invite-used`, `invite-expired` | Mã mời đã dùng; đã quá 15 phút |
+| 404 | `no-team`, `invite-unknown`, `not-found`, `no-room`, `no-knock`, `no-grant`, `code-unknown` | Team không tồn tại; mã mời không tồn tại; đường dẫn lạ; phòng không có (hoặc là phòng mình); không có lượt gõ cửa (đã trả lời / quá 10 phút); người đó không được xem; mã xem không tồn tại |
+| 409 | `exists`, `already-member`, `room-open`, `already-allowed`, `own-room` | Team id đã có; khoá này đã là thành viên; phòng đang mở; đã được xem; mã của phòng mình |
+| 410 | `invite-used`, `invite-expired`, `code-used`, `code-expired` | Mã mời / mã xem đã dùng hoặc hết hạn |
 | 413 | `too-large` | Body hơn 16 KB |
-| 429 | `too-many-invites`, `join-paused` | Một người có 10 mã mời chưa dùng; team nhận 20 mã sai trong 10 phút |
+| 429 | `too-many-invites`, `join-paused`, `too-many-knocks`, `too-many-codes`, `redeem-paused` | Một người có 10 mã mời chưa dùng; team nhận 20 mã sai trong 10 phút; một người gõ cửa 5 lần trong 10 phút; một phòng có 5 mã xem chưa dùng; một người nhập sai mã xem 10 lần trong 10 phút |
 
 ### Chữ ký
 
@@ -168,15 +218,19 @@ Phần code ký và kiểm chữ ký nằm ở `shared/team-protocol.js`, dùng 
 | `t` | Nội dung | Khi nào |
 | --- | --- | --- |
 | `room` | `{ room: { mode, counts: { work, rest, wait }, people? } }` | Khi có thay đổi, tối đa 1,5 giây một lần; gửi lại cả phòng mỗi 60 giây |
-| `ev` | `{ list: [{ p, type, ts, label? }] }` (tối đa 50) | Chỉ khi phòng mở |
+| `ev` | `{ list: [{ p, type, ts, label? }] }` (tối đa 50) | Khi phòng mở, hoặc phòng đóng đang có người được xem |
 
 **Tin nhắn từ hub xuống**
 
 | `t` | Nội dung |
 | --- | --- |
-| `hello` | `{ team, me: { id, name, owner }, policy: { details }, rooms: [room…] }`, ngay khi kết nối |
-| `room` | `{ room: { member: { id, name }, online, mode, counts, people?, at } }` |
-| `ev` | `{ member, list }`, chỉ từ phòng mở |
+| `hello` | `{ team, me: { id, name, owner }, policy: { details }, rooms: [room…], grants, knocks, asks }`, ngay khi kết nối |
+| `room` | `{ room: { member: { id, name }, online, mode, counts, people?, access?: { until }, at } }`. `access` chỉ có với người được xem phòng đóng đó |
+| `ev` | `{ member, list }`: từ phòng mở cho mọi người; từ phòng đóng chỉ cho người được xem |
+| `knock` | `{ knock: { viewer: { id, name }, at } }`: có người gõ cửa phòng bạn |
+| `knocks` | `{ list: [{ viewer, at }] }`: lượt gõ cửa đang chờ ở phòng bạn |
+| `grants` | `{ list: [{ viewer, until, since }] }`: ai được xem phòng bạn (`until: null` là luôn) |
+| `access` | `{ room, state: 'granted'\|'denied'\|'revoked'\|'expired', until? }`: trả lời cho phòng bạn đã gõ cửa |
 | `policy` | `{ policy: { details } }` |
 | `gone` | `{ member }`: người đó đã rời team |
 
@@ -187,6 +241,7 @@ Phần code ký và kiểm chữ ký nằm ở `shared/team-protocol.js`, dùng 
 | Đóng (mặc định) | `counts`: số người đang làm / chờ / nghỉ |
 | Mở | Thêm `people[]`: `id` (mã ngẫu nhiên, đổi mỗi lần chạy), `status`, `project` (tên repo, hoặc tên thư mục cuối), `role` (chức danh), `subs` (số subagent), `act` (loại việc: read, edit, bash…), `since`, `at` |
 | Mở + `details` bật | Thêm `label` (tên file, câu lệnh), đã qua `redact()`, tối đa 80 ký tự |
+| Đóng + có người được xem | Như phòng mở (cả `label` nếu `details` bật). Hub chỉ chuyển `people` và sự kiện cho người được xem; người khác vẫn chỉ thấy số đếm. Hết người được xem thì máy member thôi gửi `people` |
 | Tạm dừng | Không có kết nối nào: phòng hiện offline |
 
 **Không bao giờ gửi**: prompt, tiêu đề cuộc trò chuyện, câu trả lời, đường dẫn thư mục, pid, session id, chi phí / token,
@@ -217,6 +272,22 @@ my-office team join   ──POST /t/<id>/join (ký bằng khoá mới, kèm mã)
   `server/team/client.mjs` gọi hub và lưu `data/team.json`.
 - Hub **không có đường gửi lệnh xuống máy member**. Đây là cách bảo đảm không ai giao việc chéo được.
 
+Phòng đóng (bước 4):
+
+```
+B bấm Gõ cửa ─POST /api/team/knock─▶ server B ─POST /t/<id>/knock (ký)─▶ hub ──{t:'knock'}──▶ A (toast, số đỏ)
+A bấm 1 giờ  ─POST /api/team/answer─▶ server A ─POST /t/<id>/answer──▶ hub ──{t:'access'}──▶ B
+                                                                       └──{t:'grants'}──▶ A: relay A gửi phòng kèm people
+hub ──room kèm people + access.until──▶ chỉ B        hub ──room chỉ có số đếm──▶ những người khác
+hết giờ: alarm của Durable Object ─▶ xoá grant, báo A và B ─▶ relay A thôi gửi people
+```
+
+- Hub gửi riêng cho từng người: `core.js` trả về danh sách `[{ to, msg }]`, `team.js` (`deliver`) gửi tới socket của
+  từng người nhận.
+- Người của phòng đóng **chỉ nằm trong bộ nhớ** của hub (`live.full`), không lưu SQLite. Bảng `rooms` chỉ có phần công
+  khai (số đếm).
+- Grant hết hạn nhờ **alarm** của Durable Object (`setAlarm` tới lần hết hạn gần nhất). Hub ngủ dậy vẫn xử lý được.
+
 ## Dữ liệu
 
 **Trên máy member** (`data/`, đã có trong `.gitignore`):
@@ -233,7 +304,10 @@ my-office team join   ──POST /t/<id>/join (ký bằng khoá mới, kèm mã)
 | `members` | `id`, `name`, `role`, `joined_at`, `left_at` | `role` hiện luôn là `member` |
 | `devices` | `key`, `member_id`, `added_at`, `revoked_at` | |
 | `invites` | `hash`, `created_by`, `created_at`, `expires_at`, `used_by`, `used_at` | Chỉ lưu `sha256` của mã. Mã hết hạn quá 1 ngày thì bị xoá. |
-| `grants` | `room`, `viewer`, `created_at`, `expires_at` | Tạo sẵn cho bước 4 (gõ cửa, QR) |
+| `grants` | `room`, `viewer`, `created_at`, `expires_at` | Bước 4: ai được xem phòng nào. `expires_at` null là luôn. Xoá khi hết hạn, bị thu hồi, hoặc một trong hai người rời team |
+| `knocks` | `room`, `viewer`, `at` | Lượt gõ cửa đang chờ, sống 10 phút |
+| `view_codes` | `hash`, `room`, `created_at`, `expires_at`, `used_by`, `used_at` | Chỉ lưu `sha256` của mã. Hết hạn quá 1 ngày thì xoá |
+| `access_log` | `id`, `at`, `room`, `viewer`, `action`, `detail` | `knock`, `grant` (detail: hour/day/always), `deny`, `revoke`, `expired`, `code`, `redeem`, `redeem-failed`. Giữ 200 dòng mỗi phòng |
 | `audit` | `at`, `actor`, `action`, `detail` | Các hành động: `create`, `invite`, `join`, `join-failed`, `leave` |
 | `nonces` | `nonce`, `at` | Giữ 2 phút |
 | `rooms` | `member_id`, `data`, `at` | Bước 2: phòng gần nhất của từng người (đã làm sạch), để hub nhớ được sau khi ngủ. Xoá khi người đó rời team |
@@ -251,6 +325,9 @@ npx wrangler login                   # đăng nhập Cloudflare (tài khoản fr
 npx wrangler secret put CREATE_TOKEN # nên đặt: chỉ người có token mới tạo được team
 npm run deploy                       # in ra địa chỉ https://my-office-hub.<tài-khoản>.workers.dev
 ```
+
+**Lên bản mới** (vd. 0.3.0 cho bước 4): `cd hub && npm run deploy`. Bảng mới tự tạo (`CREATE TABLE IF NOT EXISTS`), dữ
+liệu cũ giữ nguyên. Hub cũ không biết các lệnh gõ cửa: máy member mới gọi vào sẽ nhận `not-found`.
 
 Gói Workers Free có Durable Objects dùng SQLite, giới hạn 100.000 request mỗi ngày. Bước 1 chỉ có vài request mỗi lần
 chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 giây một lần để nằm trong hạn mức này.
@@ -283,6 +360,17 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
 - Bước 3b đã chạy tay: Playwright với `?demo&layout=hq&debug`: thang máy có đủ tầng, toàn nhà, vào tầng 1, 2; nhân
   vật được dựng; bấm vào người mở thẻ chỉ xem; bấm vào phòng đóng không lộ project; bấm vào tầng từ ngoài thì vào tầng;
   về tầng của bạn; không lỗi console. Spec chạy tay đã xoá.
+- `tests/unit/team-access.test.mjs` (bước 4): gõ cửa rồi cho xem, chỉ người được xem thấy người trong phòng đóng,
+  người khác chỉ thấy số đếm; người phòng đóng không vào SQLite; sự kiện chỉ tới người được xem; từ chối; gõ cửa hết hạn
+  10 phút; giới hạn 5 lần gõ cửa; không gõ được phòng mình / phòng mở / phòng không có; grant hết giờ (`nextExpiry`,
+  `expire`); thu hồi; nhật ký chỉ chủ phòng xem; "hết hôm nay" tối đa 24 giờ; rời team thì mất grant; mã xem dùng một
+  lần, hết hạn 10 phút, không dùng được cho phòng mình, giữ "luôn"; 10 mã sai thì tạm khoá; tối đa 5 mã chưa dùng;
+  `roomView` / `cleanRoom` với `share`. Thêm vào `team-relay.test.mjs`: relay chỉ gửi người khi có người được xem, hết giờ
+  thì thôi; giữ lượt gõ cửa và câu trả lời cho trang. `team-floors.test.mjs`: trạng thái `shared`.
+- Bước 4 đã chạy tay end-to-end: `wrangler dev` cộng ba server (A, B, C): B gõ cửa, A thấy lượt gõ, A cho 1 giờ, B thấy
+  người trong phòng A còn C không; A tạo mã, C dùng được một lần, lần hai báo `code-used`; A thu hồi C thì C mất ngay;
+  `team grants` in đúng nhật ký. Playwright trên trang: gõ cửa từ thẻ phòng, toast và số đỏ bên chủ phòng, trả lời "Hết
+  hôm nay", tạo mã, nhật ký. Script chạy tay đã xoá.
 - Đã chạy tay end-to-end với `wrangler dev` (hai thư mục data): Keychain và file quyền `600`, `leave` xoá cả mục
   Keychain, `restore` trên máy mới, các thông báo lỗi khi hub không chạy, hub dùng `http` ngoài internet, địa chỉ không
   phải hub, có / không có `CREATE_TOKEN`.
@@ -296,8 +384,11 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
 - Trên macOS, khoá được truyền cho lệnh `security` qua tham số dòng lệnh trong khoảnh khắc lưu. Chỉ chính user đó thấy
   được tham số này.
 - **Người chạy hub về kỹ thuật đọc được dữ liệu đi qua hub**: tên thành viên, số đếm, và với phòng mở là project, chức
-  danh, loại việc. Phòng đóng chưa cấp quyền cho ai thì chi tiết không bao giờ rời máy. Mã hoá đầu cuối làm ở bước 6,
-  khi phòng đóng có người được cấp quyền xem (bước 4).
+  danh, loại việc. Phòng đóng chưa cho ai xem thì chi tiết không bao giờ rời máy. Từ bước 4, phòng đóng **đang có người
+  được xem** cũng đi qua hub (chỉ trong bộ nhớ, không lưu). Mã hoá đầu cuối làm ở bước 6.
+- Thu hồi có hiệu lực ngay trên hub, nhưng người xem **đã thấy** gì thì vẫn đã thấy (như nhìn qua cửa kính).
+- "Luôn cho phép" giữ tới khi bạn thu hồi hoặc một trong hai người rời team.
+- Mã xem chỉ 10 ký tự nhưng dùng một lần, sống 10 phút, sai 10 lần thì tạm khoá người nhập 10 phút.
 - **Cần Node 22** cho relay (WebSocket có sẵn). Node thấp hơn thì relay không chạy, `doctor` báo lỗi.
 - Hub mới cập nhật mà máy member chưa cập nhật thì vẫn chạy (bước 1 không có relay, phòng hiện offline).
 - Đồng hồ máy lệch hơn 60 giây thì mọi lệnh bị từ chối (mã lỗi `clock`).
@@ -310,7 +401,8 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
    - 3a ✅ Bảng toà nhà trên trang: phòng của bạn (mở / đóng / tạm dừng), phòng mọi người theo tầng, 4 phòng một tầng
    - 3b ✅ Toà nhà 3D: các tầng của team trên cánh phòng ban, 4 phòng một tầng; xem toàn nhà hoặc từng tầng bằng thang
      máy; kính mờ cho phòng đóng; bảng chỉ dẫn tầng; người phòng khác chỉ ngồi, chỉ xem. Cài đặt team trong panel
-4. Phòng đóng: gõ cửa, QR / mã một lần, danh sách tin cậy, thu hồi, nhật ký ra vào
+4. ✅ Phòng đóng: gõ cửa (1 giờ / hết hôm nay / luôn / từ chối), mã xem một lần, danh sách tin cậy, thu hồi, nhật ký
+   ra vào; người được xem thấy phòng đóng như phòng mở. Không làm QR
 5. Chạy thử 3–4 người
 6. Mã hoá đầu cuối cho phòng đóng, cài qua agent-setup, mở cho cả team
 7. Sau này: admin (ban quản lý toà nhà)

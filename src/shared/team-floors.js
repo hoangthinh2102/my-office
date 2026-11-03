@@ -12,7 +12,9 @@ export function floorsOf(rooms, per = ROOMS_PER_FLOOR) {
 }
 
 /** 'offline', 'open' or 'closed': what a room's card shows. */
-export const stateOf = (room) => (!room?.online ? 'offline' : room.mode === 'open' ? 'open' : 'closed');
+export const stateOf = (room) => (!room?.online ? 'offline' : room.mode === 'open' ? 'open' : room.access ? 'shared' : 'closed');
+/** Can you see who is in the room (an open room, or a closed one its owner let you into)? */
+export const seesIn = (st) => st === 'open' || st === 'shared';
 
 /** How many people a room has in it now (working, waiting or resting). */
 export const headcount = (room) => { const c = room?.counts || {}; return (c.work || 0) + (c.wait || 0) + (c.rest || 0); };

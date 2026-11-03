@@ -14,9 +14,9 @@ import { isTeamId, randomId } from '../../shared/team-protocol.js';
 
 export { Team } from './team.js';
 
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
-const ACTIONS = new Set(['invites', 'join', 'me', 'leave', 'policy', 'ws']);
+const ACTIONS = new Set(['invites', 'join', 'me', 'leave', 'policy', 'ws', 'knock', 'answer', 'revoke', 'code', 'redeem', 'access']);
 
 const hub = {
   async fetch(request, env) {

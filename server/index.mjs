@@ -2504,6 +2504,30 @@ const server = http.createServer((req, res) => {
     }).catch(() => json(res, 400, { ok: false, message: tr('server.badRequest') }));
     return;
   }
+  // team mode, closed rooms: knock on a door, answer a knock, take a grant back, make or use a view code (this computer only)
+  const accessCall = req.method === 'POST' && /^\/api\/team\/(knock|answer|revoke|code|redeem)$/.exec(url.pathname)?.[1];
+  if (accessCall) {
+    if (!isLoopback(req) || !sameOriginOf(req) || !String(req.headers['content-type'] || '').startsWith('application/json')) { json(res, 403, { ok: false, message: tr('server.forbidden') }); return; }
+    readJson(req).then(async (b) => {
+      b = b || {};
+      let out;
+      try {
+        if (accessCall === 'knock') { out = await teamClient.knock(b.room); team.setAccess({ asked: out.knock?.room }); }
+        else if (accessCall === 'answer') { out = await teamClient.answer({ viewer: b.viewer, grant: b.grant }); team.setAccess(out); }
+        else if (accessCall === 'revoke') { out = await teamClient.revoke(b.viewer); team.setAccess(out); }
+        else if (accessCall === 'code') out = await teamClient.viewCode();
+        else { out = await teamClient.redeem(b.code); }
+      } catch (e) { json(res, 400, { ok: false, code: e.code || 'error' }); return; }
+      json(res, 200, { ok: true, ...(accessCall === 'code' ? { code: out.code, expiresAt: out.expiresAt } : {}),
+        ...(accessCall === 'redeem' ? { room: out.room, until: out.until } : {}), team: team.state() });
+    }).catch(() => json(res, 400, { ok: false, message: tr('server.badRequest') }));
+    return;
+  }
+  if (req.method === 'GET' && url.pathname === '/api/team/access') {   // team mode: who may see your room, who knocks, and its log
+    if (!isLoopback(req)) { json(res, 403, { error: 'local only' }); return; }
+    teamClient.access().then((out) => json(res, 200, { ok: true, ...out }), (e) => json(res, 400, { ok: false, code: e.code || 'error' }));
+    return;
+  }
   if (req.method === 'POST' && url.pathname === '/api/todos') {
     const sameOrigin = sameOriginOf(req);
     if (!authorized(req, url) || !sameOrigin || !String(req.headers['content-type'] || '').startsWith('application/json')) { json(res, 403, { ok: false, message: tr('server.forbidden') }); return; }

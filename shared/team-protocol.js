@@ -7,6 +7,11 @@ export const MAX_SKEW_MS = 60_000;          // a signed request older or newer t
 export const NONCE_KEEP_MS = 2 * MAX_SKEW_MS;   // how long the hub remembers a nonce (longer than any accepted request lives)
 export const INVITE_TTL_MS = 15 * 60_000;   // an invite works once, for 15 minutes
 export const NAME_MAX = 40;
+/* closed rooms (step 4): knocking, one-time view codes, grants */
+export const KNOCK_TTL_MS = 10 * 60_000;     // a knock waits for an answer this long
+export const VIEW_CODE_TTL_MS = 10 * 60_000; // a view code works once, for 10 minutes
+export const CODE_GRANT_MS = 3600_000;       // and lets its user watch for an hour
+export const GRANTS = new Set(['hour', 'day', 'always']);   // an hour, until the end of the room owner's day, or always (trusted)
 
 const subtle = globalThis.crypto.subtle;
 const ED = { name: 'Ed25519' };
@@ -96,6 +101,15 @@ export function makeInviteCode() {
 export const normalizeCode = (code) => String(code || '').toUpperCase().replace(/[\s-]/g, '');
 export const isInviteCode = (code) => normalizeCode(code).length === CODE_LEN && [...normalizeCode(code)].every((c) => CODE_ALPHABET.includes(c));
 export const hashCode = (teamId, code) => sha256Hex(`invite\n${teamId}\n${normalizeCode(code)}`);
+export const hashViewCode = (teamId, code) => sha256Hex(`view\n${teamId}\n${normalizeCode(code)}`);
+/** When a grant made now ends: an hour; the end of the owner's day (`dayEnd`, from the owner's own clock, at most a
+ *  day away); or null for always. Returns undefined for anything else. */
+export function grantUntil(kind, now, dayEnd) {
+  if (kind === 'hour') return now + 3600_000;
+  if (kind === 'always') return null;
+  if (kind === 'day') { const t = Number(dayEnd); return Number.isFinite(t) && t > now ? Math.min(t, now + 24 * 3600_000) : now + 3600_000; }
+  return undefined;
+}
 export const isTeamId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{22}$/.test(id);
 
 export const hubBase = (url) => {
@@ -164,10 +178,11 @@ export function presence(sessions) {
 }
 
 /** This computer's room as it may leave it. sessions: the server's public session views (server/index.mjs pub());
-    idOf(sessionId): an opaque id for it; redact: masks secrets in a label. */
-export function roomView(sessions, { mode, details = false, idOf, redact = (x) => x }) {
+    idOf(sessionId): an opaque id for it; redact: masks secrets in a label. share: a closed room that someone has been
+    let into (step 4) sends its people too; the hub passes them only to those people. */
+export function roomView(sessions, { mode, details = false, idOf, redact = (x) => x, share = false }) {
   const m = MODES.has(mode) ? mode : 'closed', room = { mode: m, counts: presence(sessions) };
-  if (m !== 'open') return room;
+  if (m !== 'open' && !share) return room;
   room.people = (sessions || []).slice(0, PEOPLE_MAX).map((s) => {
     const p = {
       id: idOf(s.id), status: statusOf(s.status),
@@ -188,12 +203,13 @@ export function eventView(e, { details = false, idOf, redact = (x) => x }) {
 }
 
 /** What the hub keeps and passes on from what a member sent: every field checked and clipped, and nothing a closed
-    room (or the team's details setting) doesn't allow. Returns null for anything that isn't a room. */
-export function cleanRoom(raw, { details = false } = {}) {
+    room (or the team's details setting) doesn't allow. share: the room has viewers let in, so a closed room's people
+    are kept too (for them only). Returns null for anything that isn't a room. */
+export function cleanRoom(raw, { details = false, share = false } = {}) {
   if (!raw || typeof raw !== 'object') return null;
   const mode = MODES.has(raw.mode) ? raw.mode : 'closed', c = raw.counts || {};
   const room = { mode, counts: { work: int(c.work, 999), rest: int(c.rest, 999), wait: int(c.wait, 999) } };
-  if (mode !== 'open' || !Array.isArray(raw.people)) return room;
+  if ((mode !== 'open' && !share) || !Array.isArray(raw.people)) return room;
   room.people = raw.people.slice(0, PEOPLE_MAX).filter((p) => p && isOpaqueId(p.id)).map((p) => {
     const o = { id: p.id, status: statusOf(p.status), project: cleanName(p.project), role: cleanName(p.role), subs: int(p.subs, 99),
       act: p.act ? evType(p.act) : '', since: int(p.since, 1e14), at: int(p.at, 1e14) };

@@ -6,13 +6,12 @@ team** đưa văn phòng của cả team vào chung một toà nhà:
 - **Mỗi người là một phòng ban.** Bạn là giám đốc phòng của mình và chỉ giao việc được cho nhân viên (phiên Claude
   Code) của chính mình.
 - **Phòng mở**: mọi người trong team vào xem được, **chỉ xem**, không làm gì được.
-- **Phòng đóng** (mặc định): người khác chỉ biết phòng có người hay không. Muốn xem phải được bạn cho phép.
+- **Phòng đóng** (mặc định): người khác chỉ biết phòng có người hay không. Muốn xem phải gõ cửa và được bạn cho phép.
 - **Không cần tài khoản hay mật khẩu.** Máy của bạn tự có một khoá riêng, và khoá đó chính là danh tính của bạn.
 - **Code, prompt, nội dung trò chuyện với Claude không bao giờ rời khỏi máy bạn.**
 
-> **Hiện trạng (bước 2):** đã có vào team, mời người khác, mở / đóng phòng, tạm dừng, và xem các phòng bằng lệnh
-> `team rooms`. Phần **xem phòng của nhau trong văn phòng 3D** đang làm ở bước tiếp theo. Cứ vào team trước, khi phần đó
-> xong bạn chỉ cần cập nhật My Office.
+> **Hiện trạng (bước 4):** đã có vào team, mời người khác, mở / đóng / tạm dừng phòng, toà nhà trên trang và toà nhà
+> 3D, gõ cửa phòng đóng, mã xem, thu hồi và nhật ký ra vào.
 
 ---
 
@@ -99,6 +98,45 @@ máy.
 
 Người khác **chỉ xem**: không ai giao việc, duyệt hay nhắn được cho nhân viên của bạn qua team.
 
+### Phòng đóng: gõ cửa, cho xem, thu hồi
+
+**Muốn xem phòng đóng của ai đó**: mở **Toà nhà**, bấm **Gõ cửa xin xem** trên thẻ phòng của họ (hoặc trên thẻ khi bấm
+vào phòng trong toà nhà 3D). Thẻ sẽ ghi "Đang chờ … trả lời". Khi được cho xem, thẻ chuyển sang **Được mời xem** kèm thời
+gian còn lại, và bạn thấy người trong phòng đó như phòng mở (trong 3D là kính trong và nhân viên ngồi làm).
+
+**Có người gõ cửa phòng bạn**: góc dưới hiện thông báo và nút **Toà nhà** có số đỏ. Mở Toà nhà, phần *Phòng của bạn* có:
+
+| Nút | Nghĩa |
+| --- | --- |
+| **1 giờ** | Cho xem 1 giờ |
+| **Hết hôm nay** | Cho xem tới nửa đêm theo giờ máy bạn |
+| **Luôn cho phép** | Cho vào danh sách tin cậy, xem được tới khi bạn thu hồi |
+| **Từ chối** | Không cho xem. Người đó thấy "chưa cho xem lúc này" và có thể gõ lại sau |
+
+Lượt gõ cửa không trả lời sẽ tự mất sau 10 phút.
+
+**Danh sách "Ai được xem phòng bạn"**: mỗi người có nút **Thôi cho xem**, có hiệu lực ngay. Hoặc dùng lệnh:
+
+```bash
+node bin/cli.mjs team grants          # ai đang được xem, ai đang gõ cửa, nhật ký gần đây
+node bin/cli.mjs team revoke Bình     # thôi cho Bình xem
+```
+
+**Mã xem** (khi muốn cho một người xem nhanh, không cần chờ họ gõ cửa): bấm **Tạo mã xem**, hoặc:
+
+```bash
+node bin/cli.mjs team code
+```
+
+Gửi mã cho đúng một người qua tin nhắn riêng. Mã dùng một lần, hết hạn sau 10 phút, cho xem 1 giờ. Người nhận nhập mã
+vào ô **Mã của đồng đội** trong Toà nhà, hoặc chạy `node bin/cli.mjs team redeem <mã>`.
+
+**Nhật ký ra vào** (cuối phần *Phòng của bạn*): ai gõ cửa, bạn đã cho ai xem, ai dùng mã, ai hết giờ.
+
+Gõ cửa, trả lời và tạo mã chỉ làm được trên máy chạy văn phòng; trên điện thoại chỉ xem.
+
+Lưu ý: thu hồi chỉ chặn từ lúc đó trở đi; người xem đã thấy gì thì vẫn đã thấy.
+
 ## 4. Mời đồng đội
 
 ```bash
@@ -146,6 +184,9 @@ máy.
 | Vừa có quá nhiều mã mời sai | Đợi 10 phút rồi thử lại |
 | `team rooms` báo chưa kết nối được hub | Kiểm tra mạng; văn phòng tự kết nối lại. `node bin/cli.mjs doctor` để xem chi tiết |
 | `doctor` báo chế độ team cần Node 22 | Cập nhật Node.js lên 22 trở lên, rồi khởi động lại văn phòng |
+| Mã xem đã được dùng / đã hết hạn / không tồn tại | Xin chủ phòng một mã mới |
+| Vừa nhập sai mã nhiều quá / gõ cửa nhiều quá | Đợi 10 phút rồi thử lại |
+| Gõ cửa báo `not-found` | Hub chưa lên bản mới (0.3.0): báo người quản lý hub chạy `cd hub && npm run deploy` |
 
 ---
 

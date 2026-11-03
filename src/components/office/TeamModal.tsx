@@ -33,6 +33,28 @@ export default async function TeamModal() {
                 <span>{t('team.policy.switch')}</span>
               </label>
             </div>
+            {/* closed rooms: knocks on your door, who may look in, view codes (src/office/ui/team-access.js) */}
+            <div className="team-access" id="team-access">
+              <p className="team-access-note" id="team-access-open" hidden>{t('team.access.isOpen')}</p>
+              <div className="team-knocks" id="team-knocks"></div>
+              <div className="team-grants-box">
+                <b className="team-access-h">{t('team.access.grantsTitle')}</b>
+                <ul className="team-grants" id="team-grants"></ul>
+              </div>
+              <div className="team-code-row">
+                <button type="button" className="team-code-make" id="team-code-make"><span data-icon="lock"></span>{t('team.access.makeCode')}</button>
+                <span className="team-code-out" id="team-code-out" hidden></span>
+              </div>
+              <form className="team-redeem" id="team-redeem">
+                <label htmlFor="team-redeem-in">{t('team.access.redeemLabel')}</label>
+                <input id="team-redeem-in" type="text" maxLength={14} autoComplete="off" spellCheck={false} placeholder={t('team.access.redeemPh')} />
+                <button type="submit" id="team-redeem-go">{t('team.access.redeem')}</button>
+              </form>
+              <details className="team-log" id="team-log">
+                <summary>{t('team.access.logTitle')}</summary>
+                <ul id="team-log-list"></ul>
+              </details>
+            </div>
           </section>
           <div className="team-floors" id="team-floors"></div>
           <p className="dir-note team-foot">{t('team.readOnly')} <span id="team-3d-note"></span></p>

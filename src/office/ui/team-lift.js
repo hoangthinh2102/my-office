@@ -6,6 +6,7 @@ import { $, HQ, el } from '../core/env.js';
 import { icon, TYPE_ICON } from './icons.js';
 import { goTower, onViewHooks, pickTower, syncTower, towerFloors, towerRoom, view } from '../world/team-tower.js';
 import { stateOf } from '../../shared/team-floors.js';
+import { knockBlock } from './team-access.js';
 import { PALETTE, hash } from '../people/workers.js';
 import { drS } from './session-drawer.js';
 import { queueUi } from './activity.js';
@@ -89,6 +90,7 @@ function openCard(hit, r, ev) {
   } else if (st === 'closed') body.append(el('p', 'tw-card-sub', `${tr('team.closedNote')} · ${tr('team.counts', { work: r.counts?.work || 0, wait: r.counts?.wait || 0, rest: r.counts?.rest || 0 })}`));
   else if (st === 'offline') body.append(el('p', 'tw-card-sub', tr('team.offline')));
   else body.append(el('p', 'tw-card-sub', tr('team.counts', { work: r.counts?.work || 0, wait: r.counts?.wait || 0, rest: r.counts?.rest || 0 })));
+  if (!p) { const access = knockBlock(r, st); if (access) body.append(access); }
   body.append(el('p', 'tw-card-ro', tr('team.card.readOnly')));
   card.replaceChildren(head, body);
   card.hidden = false;
