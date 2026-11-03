@@ -56,3 +56,10 @@ export const FLOOR_THEMES = ['studio', 'garden', 'library'];
 export const themeOf = (n) => FLOOR_THEMES[(Math.max(1, Math.floor(Number(n)) || 1) - 1) % FLOOR_THEMES.length];
 /** Seats in each room's break corner (its sofa, bean bags or armchairs): who is resting may sit there. */
 export const BREAK_SEATS = 2;
+/** The 3D building never looks unfinished: at least MIN_FLOORS floors, the ones nobody is on yet with free rooms. */
+export const MIN_FLOORS = 5;
+export function padFloors(floors, min = MIN_FLOORS) {
+  const out = Array.isArray(floors) ? [...floors] : [];
+  while (out.length < min) out.push({ n: out.length + 1, rooms: [] });
+  return out;
+}

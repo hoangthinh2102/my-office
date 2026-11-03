@@ -96,6 +96,8 @@
 .tw-more { font-size: 10px; color: #C9D1DB; }
 .tw-floor-tag { border-radius: 10px; flex-direction: column; align-items: flex-start; gap: 4px; padding: 7px 10px; }
 .tw-floor-tag span { font-weight: 500; font-size: 11px; color: #AEB7C4; }
+/* a phone: the floors stand close together on screen, so each tag is just "Floor n" */
+@media (max-width: 720px) { .tw-floor-tag { padding: 4px 8px; font-size: 11px; } .tw-floor-tag span { display: none; } }
 
 /* someone in another room: a card, view only */
 .tw-card { position: absolute; z-index: 5; width: 280px; background: rgba(19, 25, 34, .97); color: #EEF1F7; border: 1px solid rgba(255, 255, 255, .12); border-radius: 14px; box-shadow: 0 14px 36px rgba(0, 0, 0, .45); overflow: hidden; }

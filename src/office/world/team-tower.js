@@ -18,7 +18,7 @@ import { PALETTE, hash } from '../people/workers.js';
 import { fitText } from '../scene/blocks.js';
 import { gridTex, plankTex, speckTex } from './pro/pieces.js';
 import { furnishFloor, pathTo, roomPlan } from './tower-floor.js';
-import { BREAK_SEATS, FLOOR_H, TOWER_Y0, floorY, floorsOf, seatPeople, seesIn, silhouettes, stateOf, themeOf } from '../../shared/team-floors.js';
+import { BREAK_SEATS, FLOOR_H, TOWER_Y0, floorY, floorsOf, padFloors, seatPeople, seesIn, silhouettes, stateOf, themeOf } from '../../shared/team-floors.js';
 import { t as tr } from '../../i18n/index.js';
 
 const X0 = -8, X1 = 14, Z0 = WING.z0, Z1 = WING.z1, CX = (X0 + X1) / 2, CZ = (Z0 + Z1) / 2;
@@ -269,7 +269,7 @@ function fillFloor(F) {
   F.screens.instanceColor.needsUpdate = true;
   drawDirectory(F);
   const names = F.rooms.filter((R) => R.room).map((R) => R.room.member.name);
-  F.lab.replaceChildren(el('b', null, tr('team.floor', { n: F.n })), el('span', null, names.length ? names.join(' · ') : tr('team.lift.emptyFloor')));
+  F.lab.replaceChildren(el('b', null, tr('team.floor', { n: F.n })), el('span', null, names.length ? names.join(' · ') : tr('team.lift.free')));
   nightShown = null;
   showDetail(F);
 }
@@ -296,11 +296,12 @@ function drawDirectory(F) {
 export function syncTower(t) {
   if (!HQ) return;
   const rooms = t?.inTeam ? t.rooms || [] : [];
-  // in a team with nobody else in it yet: one floor of empty rooms, so there is a building to look at
-  const theirs = floorsOf(rooms), fl = t?.inTeam && !theirs.length ? [{ n: 1, rooms: [] }] : theirs;
+  // in a team, there is always a whole building to look at: at least MIN_FLOORS floors, free rooms where nobody is yet
+  const fl = t?.inTeam ? padFloors(floorsOf(rooms)) : [];
   if (!fl.length) { if (tower) { clearChars(); dropDetail(); dispose(tower); scene.remove(tower); tower = null; floors = []; layoutKey = ''; } if (view.mode !== 'mine') goTower('mine'); return; }
   materials();
-  const key = fl.map((f) => f.rooms.map((r) => r.member.id).join(',')).join('|');
+  // (the floor count too: one floor of empty rooms must not look like "nothing built yet", '')
+  const key = `${fl.length}#` + fl.map((f) => f.rooms.map((r) => r.member.id).join(',')).join('|');
   if (key !== layoutKey) { layoutKey = key; rebuild(fl); }
   for (const f of fl) {
     const F = floors[f.n - 1];
@@ -345,7 +346,7 @@ function showDetail(F) {
       if (r) DR.plaque(r.member.name, stText(st), st === 'offline'); else DR.plaque(tr('team.tower.free'), tr('team.floor', { n: F.n }), true);
     }
     const mid = r?.member.id;
-    detail.D.show(R.i, { lit: !!R.lit, bySeat: R.bySeat || new Map(), shadows: R.shadows || 0, atDesk: (p) => { const c = chars.get(`${mid}/${p.id}`); return !c || c.st === 'desk'; } });
+    detail.D.show(R.i, { name: r?.member.name || '', st, lit: !!R.lit, bySeat: R.bySeat || new Map(), shadows: R.shadows || 0, atDesk: (p) => { const c = chars.get(`${mid}/${p.id}`); return !c || c.st === 'desk'; } });
   }
 }
 
@@ -441,7 +442,11 @@ export function pickTower(ray) {
   const hit = ray.intersectObjects(objs, true)[0], info = hit?.object.userData.tw || null;
   // something to click (a plant, the coffee machine), unless someone stands in front of it
   const pp = detail?.F === F ? detail.D.pick(ray.ray) : null;
-  if (pp && (!info || info.kind === 'room' || pp.d < hit.distance - 0.3)) return { kind: 'prop', floor: F.n, prop: pp.prop };
+  if (pp && (!info || info.kind === 'room' || pp.d < hit.distance - 0.3)) {
+    // a desk with someone at it: their card (as clicking them); a free desk only bounces
+    const seat = pp.prop.seat, r = seat && F.rooms[seat.i].room, p = r && detail.D.rooms[seat.i].view?.bySeat.get(seat.k);
+    return p ? { kind: 'person', floor: F.n, i: seat.i, member: r.member.id, person: p.id, prop: pp.prop } : { kind: 'prop', floor: F.n, prop: pp.prop };
+  }
   if (info) return info;
   // anywhere else on this floor (a corridor, a wall): still the building, not your own office under it
   const r = ray.ray, k = r.direction.y ? (F.y - r.origin.y) / r.direction.y : -1, x = r.origin.x + r.direction.x * k, z = r.origin.z + r.direction.z * k;
