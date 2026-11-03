@@ -76,6 +76,20 @@ Lệnh có hiệu lực sau vài giây, không cần khởi động lại.
 
 Muốn xem thử trước khi vào team: mở `http://localhost:4310/?demo`, rồi bấm nút toà nhà (team giả "Demo Studio").
 
+**Toà nhà 3D**: chọn kiểu văn phòng **Tập đoàn** (Cài đặt → Văn phòng). Bên phải văn phòng có thang máy:
+
+- nút trên cùng: **Toàn nhà**, nhìn cả toà nhà từ ngoài, phòng có người thì sáng đèn, tên team trên mái;
+- các số: vào **từng tầng**. Phòng mở thấy từng nhân viên ngồi làm; phòng đóng là kính mờ, chỉ thấy bóng người;
+  bấm vào một người để xem người đó đang làm gì (chỉ xem);
+- nút cuối: về **tầng của bạn** (văn phòng của bạn như bình thường).
+
+Trang nhớ lần xem cuối: lần sau mở lại sẽ vào đúng toàn nhà hoặc tầng bạn đang xem.
+
+Xem thử: `http://localhost:4310/?demo&layout=hq`.
+
+**Người tạo team** thấy thêm trong panel toà nhà một công tắc "Hiện tên file và câu lệnh" (giống lệnh
+`team policy details on|off`). Mọi người đều thấy cài đặt này đang bật hay tắt.
+
 **Phòng mở cho người khác thấy**: từng phiên đang làm, chờ hay nghỉ; tên project (repo); chức danh; số subagent; **loại**
 việc đang làm (đọc file, sửa file, chạy lệnh…). Tên file và câu lệnh chỉ hiện nếu người tạo team bật cài đặt
 `team policy details on` (mặc định tắt). Kể cả khi đó, mật khẩu và token vẫn bị che.

@@ -2,12 +2,14 @@
 // which you can open, close or pause from this computer, and everyone else's rooms floor by floor, view only. What it
 // shows comes from the server's relay (server/team/relay.mjs) in the live stream ({k:'team'}), or from demo mode.
 import { state } from '../core/state.js';
-import { $, el, fmtAgo, nowMs } from '../core/env.js';
+import { $, HQ, el, fmtAgo, nowMs } from '../core/env.js';
 import { TOKEN } from '../net/live.js';
 import { PALETTE, hash } from '../people/workers.js';
 import { TYPE_ICON, icon } from './icons.js';
 import { toast } from './activity.js';
 import { floorsOf, latest, stateOf } from '../../shared/team-floors.js';
+import { syncLift } from './team-lift.js';
+import { goTower } from '../world/team-tower.js';
 import { t as tr } from '../../i18n/index.js';
 
 let modal, demoSet = null;
@@ -21,6 +23,7 @@ export function onTeam(t) {
   if (btn) btn.hidden = !t?.inTeam;
   if (!t?.inTeam && isOpen()) close();
   if (isOpen()) render();
+  syncLift(state.team);   // the 3D building (headquarters plan)
 }
 /** Demo mode changes its own pretend room instead of asking the server. */
 export function setDemoRoom(fn) { demoSet = fn; }
@@ -28,18 +31,25 @@ export function setDemoRoom(fn) { demoSet = fn; }
 function open() { if (!team()?.inTeam) return; modal.hidden = false; $('btn-team')?.setAttribute('aria-pressed', 'true'); render(); }
 function close() { modal.hidden = true; $('btn-team')?.setAttribute('aria-pressed', 'false'); }
 
+const post = async (path, body) => {
+  const r = await fetch(`${path}${TOKEN ? `?k=${encodeURIComponent(TOKEN)}` : ''}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!j.ok) throw new Error(j.code || j.message || r.status);
+  return j;
+};
+// the team's setting (creator only; the hub checks it too): may open rooms show file names and commands?
+async function setDetails(on) {
+  if (demoSet) { demoSet({ details: on }); return; }
+  try { onTeam((await post('/api/team/policy', { details: on })).team); } catch (e) { toast(tr('team.policy.failed', { why: e.message })); render(); }
+}
+
 async function setMine(mode) {
   const body = mode === 'paused' ? { paused: true } : team()?.room?.paused ? { paused: false } : { mode };
   if (demoSet) { demoSet(mode); return; }
   try {
     // resuming keeps the room's mode; a click on open or closed while paused resumes first, then sets it
-    let r = await fetch(`/api/team/room${TOKEN ? `?k=${encodeURIComponent(TOKEN)}` : ''}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    let j = await r.json();
-    if (j.ok && body.paused === false) {
-      r = await fetch(`/api/team/room${TOKEN ? `?k=${encodeURIComponent(TOKEN)}` : ''}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode }) });
-      j = await r.json();
-    }
-    if (!j.ok) throw new Error(j.code || j.message || r.status);
+    let j = await post('/api/team/room', body);
+    if (body.paused === false) j = await post('/api/team/room', { mode });
     onTeam(j.team);
   } catch (e) { toast(tr('team.mine.failed', { why: e.message })); }
 }
@@ -61,12 +71,26 @@ function render() {
     b.disabled = !local;
   }
   $('team-mine-note').textContent = local ? tr(`team.mine.${mine}Hint`) : `${tr(`team.mine.${mine}Hint`)} ${tr('team.mine.phone')}`;
+  // the team's setting: everyone sees it; its creator changes it (on the computer the office runs on)
+  const details = !!t.policy?.details, owner = !!t.me?.owner;
+  $('team-policy-t').textContent = `${tr(details ? 'team.policy.on' : 'team.policy.off')} ${owner ? tr('team.policy.youOwn') : tr('team.policy.byOwner')}`;
+  $('team-policy-sw').hidden = !owner;
+  const sw = $('team-policy-in'); sw.checked = details; sw.disabled = !local;
+  $('team-mine').querySelector('.team-owner')?.remove();
+  if (owner) $('team-mine').querySelector('.team-mine-head b').append(el('span', 'team-owner', tr('team.owner')));
+  $('team-3d-note').textContent = HQ ? tr('team.lift.hint') : tr('team.lift.notHq');
   // everyone else's, floor by floor
   const box = $('team-floors'), floors = floorsOf(t.rooms);
   if (!floors.length) { box.replaceChildren(el('p', 'team-empty', tr('team.empty'))); return; }
   box.replaceChildren(...floors.map((f) => {
     const sec = el('section', 'team-floor');
-    sec.append(el('h3', 'team-floor-h', tr('team.floor', { n: f.n })));
+    const h = el('h3', 'team-floor-h', tr('team.floor', { n: f.n }));
+    if (HQ) {   // the floor in 3D (world/team-tower.js)
+      const go = el('button', 'team-floor-go', tr('team.lift.see')); go.type = 'button';
+      go.addEventListener('click', () => { close(); goTower(f.n); });
+      h.append(go);
+    }
+    sec.append(h);
     const grid = el('div', 'team-rooms');
     grid.append(...f.rooms.map(roomCard));
     sec.append(grid);
@@ -123,6 +147,7 @@ export function setup() {
   modal.addEventListener('click', (e) => { if (e.target === modal || e.target.closest('[data-close]')) close(); });
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && isOpen()) close(); });
   for (const b of modal.querySelectorAll('.team-seg-b')) b.addEventListener('click', () => { if (!b.classList.contains('is-sel')) setMine(b.dataset.mode); });
+  $('team-policy-in')?.addEventListener('change', (e) => setDetails(e.target.checked));
   // "N min ago" stays true while the building is open
   setInterval(() => { if (isOpen()) render(); }, 30_000);
 }

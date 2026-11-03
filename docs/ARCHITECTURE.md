@@ -31,7 +31,7 @@ Claude Code ──hooks (curl, loopback only)──▶ server/index.mjs ──SS
 | `agent-support.mjs` | Reads what the agent-support skills leave on this computer (`~/.agent-support`): the workspace's repos, each Lark task's state, the log of MRs opened; ties performance jobs to Lark tasks. Read only. |
 | `perf.mjs` | The performance board: one line per job (a prompt until Stop) in `data/perf/YYYY-MM-DD.jsonl` with its tokens, API-price cost, time, tool failures and overtime; per-person scores (`/api/perf`). |
 | `prefs.mjs` | The office's language (`data/prefs.json`, `OFFICE_LANG`) and the server's translator `tr()`. |
-| `team/identity.mjs`, `team/client.mjs`, `team/relay.mjs` | Team mode ([docs/features/team-mode.md](features/team-mode.md)): this computer's team key (the macOS keychain, else `data/team-key`), the signed calls to the team hub (`my-office team …`), and the relay: one WebSocket that sends this room, cut down to what its mode allows, and keeps everyone else's for `GET /api/team` and the page's building (`{k:'team'}` in the live stream; `POST /api/team/room` opens, closes or pauses this room, from this computer only). The protocol itself is `shared/team-protocol.js`, used by the hub too. |
+| `team/identity.mjs`, `team/client.mjs`, `team/relay.mjs` | Team mode ([docs/features/team-mode.md](features/team-mode.md)): this computer's team key (the macOS keychain, else `data/team-key`), the signed calls to the team hub (`my-office team …`), and the relay: one WebSocket that sends this room, cut down to what its mode allows, and keeps everyone else's for `GET /api/team` and the page's building (`{k:'team'}` in the live stream; `POST /api/team/room` opens, closes or pauses this room, `POST /api/team/policy` is the creator's team setting, both from this computer only; the 3D building: `world/team-tower.js`, `ui/team-lift.js`). The protocol itself is `shared/team-protocol.js`, used by the hub too. |
 
 The team hub is its own small program in `hub/`: a Cloudflare Worker with one Durable Object (SQLite) per team. `hub/src/core.js` holds the rules and runs under Node's SQLite in the unit tests.
 
@@ -95,11 +95,11 @@ engine switches to demo mode and talks to no API.
 | --- | ---: | --- |
 | `audio/sfx.js` | 69 | Sounds, synthesized in the browser. |
 | `core/env.js` | 72 | Page-wide basics: DOM helpers, the floor plan choice, replay clock, office clock, season, formatting. |
-| `core/loop.js` | 222 | The render loop and its frame budget. |
+| `core/loop.js` | 224 | The render loop and its frame budget. |
 | `core/optimize.js` | 141 | Merging static meshes into fewer draw calls, then starting. |
 | `core/schedule.js` | 36 | Office hours, set by the director (the director's office → Office hours; kept by the server, server/company.mjs) and lived by everyone: arriving in the morning, breakfast at the pantry until work starts, lunch, the midday nap, the afternoon coffee, packing up and going home when work ends. |
 | `core/state.js` | 3 | Values that more than one module assigns (the clock, the selection, mode switches…), on one shared object so any module can change them. |
-| `demo/demo-team.js` | 43 | Demo mode's team (team mode's building, ui/team.js): nine pretend teammates on three floors, some rooms open, some closed, one person offline, and work going on in the open rooms. |
+| `demo/demo-team.js` | 44 | Demo mode's team (team mode's building, ui/team.js): nine pretend teammates on three floors, some rooms open, some closed, one person offline, and work going on in the open rooms. |
 | `demo/demo.js` | 294 | Demo mode: fictional projects and a fictional Mac. |
 | `interact/first-person.js` | 261 | First person: walk the office as your own character, and (with the city outside) down the lift and out on the street: the pavements, the zebras (the traffic stops for you), the shops, the bánh mì cart. |
 | `interact/place-cards.js` | 201 | Place cards: what happens at each place. |
@@ -170,11 +170,12 @@ engine switches to demo mode and talks to no API.
 | `ui/session-drawer.js` | 431 | The session drawer: chat, steps, subagents. |
 | `ui/settings.js` | 127 | Settings popover: backdrop, floor plan, look, time, toggles. |
 | `ui/task-sheet.js` | 98 | "Giao việc": giving Claude work from the group chat (server/tasks.mjs runs it on the Mac). |
-| `ui/team.js` | 128 | Team mode's building (the building button in the top bar; markup: src/components/office/TeamModal.tsx): your own room, which you can open, close or pause from this computer, and everyone else's rooms floor by floor, view only. |
+| `ui/team-lift.js` | 121 | Team mode's lift (headquarters plan only; markup: src/components/office/Stage.tsx #tw-lift, #tw-card): the buttons down the stage's right edge that choose what you look at in the building (world/team-tower.js): the whole building, a floor, or your own floor. |
+| `ui/team.js` | 153 | Team mode's building (the building button in the top bar; markup: src/components/office/TeamModal.tsx): your own room, which you can open, close or pause from this computer, and everyone else's rooms floor by floor, view only. |
 | `ui/timelapse.js` | 156 | A 15-second clip of the office to share: square (1080 × 1080) for a feed or vertical (1080 × 1920) for Reels, TikTok and Shorts, the camera turning slowly round the floor, people at four times their pace, the day running into the evening (a clock in the corner from 8:00 to 23:00, the lights coming on at six), a title at the start and the day's numbers over the last two and a half seconds, with an original lo-fi tune under it (clip-music.js; it can be turned off). |
 | `ui/tips.js` | 115 | The first visit: a short tour of what you can click. |
 | `ui/topbar.js` | 217 | Phone modal, notifications, the night switch. |
-| `ui/whiteboard.js` | 282 | The whiteboard: agents' tasks and your own sticky notes. |
+| `ui/whiteboard.js` | 285 | The whiteboard: agents' tasks and your own sticky notes. |
 | `ui/wrapped.js` | 107 | The week in review: a 1080 × 1350 picture card (the office as it looks right now, then the week's numbers) to save as a PNG or copy, for sharing. |
 | `world/backdrops/beach.js` | 117 | Beach backdrop: sand, surf, palms, umbrellas and loungers. |
 | `world/backdrops/city.js` | 293 | The city backdrop: street grid, buildings, rooftops, lamps and traffic. |
@@ -234,5 +235,6 @@ engine switches to demo mode and talks to no API.
 | `world/props/vacuum.js` | 33 | The robot vacuum. |
 | `world/room-update.js` | 176 | Room lights, particles, the rocket, the clock and day / night. |
 | `world/screens.js` | 100 | What each desk's screens show: the editor while it edits, a terminal for commands, a browser for the web, code with the match highlighted while it reads or searches, a chat while it thinks, a permission dialog while it waits for you, a screensaver while it naps. |
+| `world/team-tower.js` | 422 | Team mode's building in 3D (headquarters plan only; docs/features/team-mode.md): every other member's room on a floor above the wing, four to a floor (src/shared/team-floors.js), the team's lift at the back. |
 | `world/terrace.js` | 114 | The terrace around the office: tiles, glass railing, bollards, planters, potted plants, seating. |
 | `world/windows.js` | 96 | Windows on the outer walls and the views they show. |

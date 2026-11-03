@@ -134,6 +134,8 @@ export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => 
         if (mode() === 'open' && events.length < EVENTS_KEEP) events.push(eventView(obj.e, { details: policy.details, idOf, redact }));
       }
     },
+    /** The team's setting as the hub just answered it (the hub's own 'policy' message follows a moment later). */
+    setPolicy(p) { policy = { details: !!p?.details }; dirty = true; changed(); },
     /** For GET /api/team and `my-office team rooms`. */
     state() {
       return {

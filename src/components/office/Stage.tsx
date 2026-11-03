@@ -16,6 +16,9 @@ export default async function Stage() {
       <PlaceCard />
       <nav className="chips" id="chips" aria-label={t('ui.stage.chips')}></nav>
       <CameraToolbar />
+      <nav className="tw-lift" id="tw-lift" hidden aria-label={t('team.lift.title')}></nav>
+      <div className="tw-card" id="tw-card" hidden role="dialog" aria-label={t('team.lift.title')}></div>
+      <div className="tw-hint" id="tw-hint" hidden role="note"><span>{t('team.lift.first')}</span><button type="button" className="tw-hint-x" data-close aria-label={t('common.close')}>×</button></div>
       <div className="lite" id="lite" hidden aria-label={t('ui.stage.lite')}></div>
       <FirstPersonHud />
       <div className="perm-stack" id="perm-stack" hidden aria-live="assertive"></div>

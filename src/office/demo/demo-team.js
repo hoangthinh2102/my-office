@@ -26,7 +26,8 @@ export function startDemoTeam(t0 = Date.now()) {
   });
   const t = { inTeam: true, team: { id: 'demo', name: 'Demo Studio', hub: '' }, me: { id: 'demo-me', name: 'You', owner: true }, room: { mode: 'closed', paused: false }, connected: true, problem: null, policy: { details: false }, rooms };
   setDemoRoom((mode) => {
-    t.room = mode === 'paused' ? { ...t.room, paused: true } : { mode, paused: false };
+    if (typeof mode === 'object') t.policy = { details: !!mode.details };   // the team's setting (you made the team)
+    else t.room = mode === 'paused' ? { ...t.room, paused: true } : { mode, paused: false };
     onTeam({ ...t });
   });
   onTeam(t);

@@ -6,6 +6,7 @@ import { HOME, SOFTWARE_GL, camera, controls, fpCam, labels, renderer, resize, s
 import { updateExtras } from '../world/props/update.js';
 import { leaving, npcs, subs, updateZs, workers } from '../people/workers.js';
 import { updateTeam } from '../people/team-lines.js';
+import { updateTower } from '../world/team-tower.js';
 import { flights, updateFlights } from '../people/director.js';
 import { updateWeather } from '../life/weather.js';
 import { updateNap } from '../life/nap.js';
@@ -162,6 +163,7 @@ export function loop(now = 0) {
   updateBoard(state.sim);
   updatePlaces(now);
   updateTeam();
+  updateTower(dt0, state.sim);
   updateWeather(dt0);
   updateNap(dt0);
   updateQuota(dt0);

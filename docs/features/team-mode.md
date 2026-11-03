@@ -1,6 +1,6 @@
-# Chế độ team (bước 1–3a: danh tính, hub, relay, toà nhà)
+# Chế độ team (bước 1–3b: danh tính, hub, relay, toà nhà)
 
-> Lark task: — · PR: #1 (bước 1), #2 + #3 (bước 2), bước 3a: (điền khi tạo) · Ngày: 2026-11-03
+> Lark task: — · PR: #1 (bước 1), #2 + #3 (bước 2), #4 (bước 3a), bước 3b: (điền khi tạo) · Ngày: 2026-11-03
 > Hướng dẫn cho người dùng: [docs/team-guide.md](../team-guide.md)
 
 ## Mục đích
@@ -19,7 +19,10 @@ phòng của mọi người về (`GET /api/team`, `my-office team rooms`). Cầ
 Bước 3a thêm **toà nhà** trên trang: nút toà nhà trên thanh trên cùng mở một bảng gồm phòng của bạn (mở / đóng / tạm
 dừng, bấm được ngay trên máy này) và phòng của mọi người, chia theo tầng, mỗi tầng 4 phòng. Chỉ xem.
 
-Chưa có: toà nhà 3D trong văn phòng (bước 3b), gõ cửa / QR (bước 4), admin. Lộ trình ở cuối file.
+Bước 3b dựng **toà nhà 3D** (kiểu văn phòng Tập đoàn): các tầng của team xếp chồng trên cánh phòng ban, thang máy
+bên phải sân khấu để xem toàn nhà hoặc vào từng tầng. Panel có thêm cài đặt team cho người tạo team.
+
+Chưa có: gõ cửa / QR (bước 4), admin. Lộ trình ở cuối file.
 
 ## Cách sử dụng
 
@@ -61,6 +64,49 @@ Tên mặc định lấy từ `git config --global user.name`, nếu không có 
 | `POST` | `/api/team/room` | `{ mode: 'open' \| 'closed' }` hoặc `{ paused: true \| false }` | `{ ok: true, team }` (trạng thái relay mới) · `{ ok: false, code }` (vd. `bad-mode`, `not-in-team`) |
 
 Chỉ nhận từ chính máy này: loopback, không qua tunnel, cùng origin, `Content-Type: application/json`. Còn lại `403`.
+
+### Toà nhà 3D (bước 3b)
+
+Chỉ ở kiểu văn phòng **Tập đoàn** (`hq`); các kiểu khác chỉ có panel. Code: `src/office/world/team-tower.js` (dựng và vẽ),
+`src/office/ui/team-lift.js` (thang máy, thẻ chỉ xem), markup `#tw-lift` / `#tw-card` trong `Stage.tsx`.
+
+- **Ba cách xem** (thang máy bên phải sân khấu):
+  - *Tầng của bạn*: văn phòng như cũ, toà nhà không được dựng vào cảnh vẽ (không tốn gì).
+  - *Toàn nhà*: mọi tầng nhìn từ ngoài: mặt kính, đèn sáng ở phòng có người, tên tầng và người trong tầng, tên team
+    trên mái. Bấm vào một tầng để vào tầng đó.
+  - *Tầng n*: các tầng phía trên được nhấc đi, nhìn từ trên xuống. Phòng mở: mỗi người một nhân vật ngồi tại bàn (gõ
+    phím khi đang làm, giơ tay khi chờ duyệt, cầm cốc khi nghỉ); màn hình bàn đổi màu theo trạng thái. Phòng đóng: kính
+    mờ (smart glass) và nắp kính mờ, chỉ thấy bóng người, đúng bằng số người. Offline: tắt đèn, ghế trống.
+- **Một tầng** dùng đúng mặt bằng của cánh phòng ban (`DEPTS`): 4 phòng, mỗi phòng 2 cụm bàn = 8 chỗ; hành lang A, B;
+  bảng chỉ dẫn tầng cạnh thang máy; thang máy kính chạy tới tầng đang xem. Tầng 1 bắt đầu ở `TOWER_Y0 = 4.5` m, mỗi tầng
+  cao `FLOOR_H = 3.4` m (`src/shared/team-floors.js`).
+- **Chỗ ngồi** (`seatPeople`): ai đã ngồi đâu thì giữ chỗ đó khi có người vào / ra; người mới lấy chỗ trống đầu tiên;
+  quá 8 người thì nhãn phòng ghi `+n`.
+- **Bấm vào một người** ở phòng khác: thẻ chỉ xem (chức danh · project, đang làm gì, số subagent, "Chỉ xem"). Bấm vào
+  phòng đóng: chỉ tên chủ phòng và số người. Không có nút giao việc, duyệt hay nhắn.
+- **Nhẹ máy**: tường, bàn, ghế, người dạng đơn giản, bóng người… mỗi loại một lần vẽ cho cả tầng (instancing). Nhân
+  vật đầy đủ chỉ dựng cho tầng đang xem (tối đa 32), đổi tầng thì dọn. Toà nhà không đổ bóng lên văn phòng.
+- Đang xem toà nhà thì nhãn của văn phòng mình (tên phiên, bong bóng, chip địa điểm) tạm ẩn, camera không tự chạy tới
+  phiên cần duyệt. Chọn một phiên của mình (danh sách bên trái) hoặc chụp ảnh thì tự về *Tầng của bạn*.
+- Trong panel, mỗi tầng có nút **Xem 3D**.
+- **Kính tràn viền**: mặt kính không có khung giữa các tấm, chỉ một cột ở mỗi góc tầng. Trên tầng đang xem, hai mặt
+  phía camera là lan can kính thấp; cột đỡ dưới toà nhà chỉ hiện khi nhìn toàn nhà.
+- **Nhớ lần xem cuối** (`localStorage` `office-tower`, mỗi trình duyệt): mở lại trang thì vào lại toàn nhà / tầng đó.
+  Mất kết nối hub (các tầng tạm biến mất) không xoá lựa chọn này.
+- Hai đầu thang máy có chữ ("Toà nhà", "Của bạn"); lần đầu có tầng, một gợi ý chỉ vào thang máy (tắt sau 15 giây
+  hoặc khi bấm, không hiện lại: `office-tower-hint`).
+
+### Cài đặt team trong panel (bước 3b)
+
+- Mọi người thấy một dòng: phòng mở đang hiện hay ẩn tên file / câu lệnh, do người tạo team đặt.
+- Người tạo team thấy nhãn **Người tạo team** và công tắc **Hiện tên file và câu lệnh** (chỉ bấm được trên máy chạy văn
+  phòng). Hub vẫn kiểm tra quyền: người khác gọi cũng bị từ chối.
+
+| Method | Path | Body | Trả về |
+| --- | --- | --- | --- |
+| `POST` | `/api/team/policy` | `{ details: true \| false }` | `{ ok: true, team }` · `{ ok: false, code }` (vd. `not-owner`) |
+
+Cùng điều kiện như `/api/team/room`: loopback, không qua tunnel, cùng origin, JSON.
 
 ### API của hub
 
@@ -232,6 +278,11 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
   Việt trên điện thoại không tràn ngang); `wrangler dev` cộng hai server A, B: B mở / tạm dừng / bật lại / đóng qua
   `POST /api/team/room` và A thấy theo, bảng của A tự cập nhật không cần tải lại; chế độ sai, body rỗng, origin lạ, sai
   `Content-Type` đều bị từ chối. Script và spec chạy tay đã xoá sau khi chạy.
+- `tests/unit/team-seats.test.mjs` (bước 3b): chỗ ngồi giữ nguyên khi có người vào / ra; phòng đầy đếm phần dư; dữ
+  liệu rác; độ cao các tầng; số bóng người của phòng đóng.
+- Bước 3b đã chạy tay: Playwright với `?demo&layout=hq&debug`: thang máy có đủ tầng, toàn nhà, vào tầng 1, 2; nhân
+  vật được dựng; bấm vào người mở thẻ chỉ xem; bấm vào phòng đóng không lộ project; bấm vào tầng từ ngoài thì vào tầng;
+  về tầng của bạn; không lỗi console. Spec chạy tay đã xoá.
 - Đã chạy tay end-to-end với `wrangler dev` (hai thư mục data): Keychain và file quyền `600`, `leave` xoá cả mục
   Keychain, `restore` trên máy mới, các thông báo lỗi khi hub không chạy, hub dùng `http` ngoài internet, địa chỉ không
   phải hub, có / không có `CREATE_TOKEN`.
@@ -257,8 +308,8 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
 2. ✅ Relay: máy member gửi phòng đã lọc lên hub, nhận phòng của mọi người về; mở / đóng / tạm dừng; cài đặt `details` chỉ người tạo team đổi được
 3. Xem team:
    - 3a ✅ Bảng toà nhà trên trang: phòng của bạn (mở / đóng / tạm dừng), phòng mọi người theo tầng, 4 phòng một tầng
-   - 3b Toà nhà 3D: mỗi thành viên một phòng ban ở cánh trụ sở, 4 phòng một tầng, thang máy đổi tầng, kính mờ cho phòng
-     đóng, bảng chỉ dẫn ở sảnh; người trong phòng khác chỉ ngồi, chỉ xem
+   - 3b ✅ Toà nhà 3D: các tầng của team trên cánh phòng ban, 4 phòng một tầng; xem toàn nhà hoặc từng tầng bằng thang
+     máy; kính mờ cho phòng đóng; bảng chỉ dẫn tầng; người phòng khác chỉ ngồi, chỉ xem. Cài đặt team trong panel
 4. Phòng đóng: gõ cửa, QR / mã một lần, danh sách tin cậy, thu hồi, nhật ký ra vào
 5. Chạy thử 3–4 người
 6. Mã hoá đầu cuối cho phòng đóng, cài qua agent-setup, mở cho cả team
