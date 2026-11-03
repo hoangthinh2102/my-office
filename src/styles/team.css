@@ -75,7 +75,7 @@
 .team-floor-go:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* the 3D building (world/team-tower.js, ui/team-lift.js): the lift down the stage's right edge */
-.tw-lift { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); z-index: 6; display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 14px;
+.tw-lift { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); z-index: 6; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px; border-radius: 14px;
   background: rgba(15, 20, 28, .84); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, .1); box-shadow: 0 8px 24px rgba(0, 0, 0, .35); max-height: calc(100% - 140px); overflow-y: auto; scrollbar-width: none; }
 .tw-lift[hidden] { display: none; }
 .tw-lift-b { all: unset; position: relative; box-sizing: border-box; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; color: #C9D1DB; font: 700 .84rem/1 var(--font); cursor: pointer; flex: none; }
