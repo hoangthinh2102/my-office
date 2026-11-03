@@ -35,6 +35,7 @@ import { saveAttachments, dropAttachments, sweepAttachments } from './attach.mjs
 import { createPerf } from './perf.mjs';
 import { pickLang, createT } from '../src/i18n/index.js';
 import { createRelay } from './team/relay.mjs';
+import { createTeamClient } from './team/client.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.OFFICE_PORT) || 4310;
@@ -293,7 +294,8 @@ const pub = (s) => ({ id: s.id, sid: rootOf(s.sid) || null, pid: s.pid, name: s.
   git: gitOf(s),
   usage: s.usage?.model ? { cost: Math.round(s.usage.cost * 100) / 100, ...liveCtx(s), model: s.usage.model, out: s.usage.out } : null });
 // Team mode (docs/features/team-mode.md): only while this computer is in a team; what leaves it is cut down in roomView
-const team = createRelay({ dataDir: DATA_DIR, sessions: () => [...sessions.values()].map(pub), redact, log: (line) => console.log(line) });
+const team = createRelay({ dataDir: DATA_DIR, sessions: () => [...sessions.values()].map(pub), redact, log: (line) => console.log(line), onChange: (t) => broadcast({ k: 'team', team: t }) });
+const teamClient = createTeamClient({ dataDir: DATA_DIR });
 function gitOf(s) { const r = s.cwd && git.repoOf(s.cwd); return r ? { repo: r.name, branch: r.branch, dirty: r.dirty, ahead: r.ahead, ci: r.ci, ciName: r.ciName, ciUrl: r.ciUrl, born: r.born || null } : null; }
 // context: exact from the status line while it reports (last 15 min), else estimated from the transcript
 const liveCtx = (s) => (s.live?.ctxMax && s.live.ctx != null && Date.now() - s.live.at < 15 * 60e3 ? { ctx: s.live.ctx, ctxMax: s.live.ctxMax, exact: true } : { ctx: s.usage.ctx, ctxMax: ctxMax(s.usage) });
@@ -2480,6 +2482,19 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
+  if (req.method === 'POST' && url.pathname === '/api/team/room') {   // team mode: open, close or pause your room (this computer only; a phone only watches)
+    if (!isLoopback(req) || !sameOriginOf(req) || !String(req.headers['content-type'] || '').startsWith('application/json')) { json(res, 403, { ok: false, message: tr('server.forbidden') }); return; }
+    readJson(req).then(async (b) => {
+      try {
+        if (b?.mode) await teamClient.setRoom(b.mode);
+        else if (typeof b?.paused === 'boolean') await teamClient.setPaused(b.paused);
+        else { json(res, 400, { ok: false, message: tr('server.badRequest') }); return; }
+      } catch (e) { json(res, 400, { ok: false, code: e.code || 'error' }); return; }
+      team.reload();
+      json(res, 200, { ok: true, team: team.state() });
+    }).catch(() => json(res, 400, { ok: false, message: tr('server.badRequest') }));
+    return;
+  }
   if (req.method === 'POST' && url.pathname === '/api/todos') {
     const sameOrigin = sameOriginOf(req);
     if (!authorized(req, url) || !sameOrigin || !String(req.headers['content-type'] || '').startsWith('application/json')) { json(res, 403, { ok: false, message: tr('server.forbidden') }); return; }
@@ -2575,7 +2590,7 @@ const server = http.createServer((req, res) => {
     const lanOn = lanIsOn();
     return { k: 'snap', lang: prefs.lang(), sessions: [...sessions.values()].map(pub), perms: [...pending.values()].map(permPub), feed, stats, local, todos, limits: limitsOut(), limitsNote: noteText(), trophies: trophies.pub(),
       lan: local && lanOn ? lanUrl() : null, lanBase: local && lanOn ? lanUrl(false) : null, pin: local ? currentPin() : null,
-      ts: local && lanOn ? tsUrl() : null, tsHere: !!tsUrl(), phoneApprove: !!prefs.get('phoneApprove'), phoneTasks: !!prefs.get('phoneTasks'), lanFixed: local && lanFixed, build: BUILD, schedule: company.get().schedule };
+      ts: local && lanOn ? tsUrl() : null, tsHere: !!tsUrl(), phoneApprove: !!prefs.get('phoneApprove'), phoneTasks: !!prefs.get('phoneTasks'), lanFixed: local && lanFixed, build: BUILD, schedule: company.get().schedule, team: team.state() };
   };
   if (url.pathname === '/stream') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });

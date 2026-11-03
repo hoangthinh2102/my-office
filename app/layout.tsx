@@ -29,6 +29,7 @@ import '@/styles/photo.css';
 import '@/styles/tips.css';
 import '@/styles/settings.css';
 import '@/styles/director.css';
+import '@/styles/team.css';
 import '@/styles/responsive.css';
 import '@/styles/phone.css';
 

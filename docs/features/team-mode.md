@@ -1,6 +1,6 @@
-# Chế độ team (bước 1–2: danh tính, hub, relay)
+# Chế độ team (bước 1–3a: danh tính, hub, relay, toà nhà)
 
-> Lark task: — · PR: #1 (bước 1), bước 2: (điền khi tạo) · Ngày: 2026-11-03
+> Lark task: — · PR: #1 (bước 1), #2 + #3 (bước 2), bước 3a: (điền khi tạo) · Ngày: 2026-11-03
 > Hướng dẫn cho người dùng: [docs/team-guide.md](../team-guide.md)
 
 ## Mục đích
@@ -16,7 +16,10 @@ Bước 1 (tài liệu này) làm phần nền:
 Bước 2 thêm **relay**: mỗi văn phòng giữ một WebSocket tới hub, gửi phòng của mình lên (lọc theo chế độ phòng) và nhận
 phòng của mọi người về (`GET /api/team`, `my-office team rooms`). Cần **Node 22** trở lên.
 
-Chưa có: xem phòng của người khác trong văn phòng 3D (bước 3), gõ cửa / QR (bước 4), admin. Lộ trình ở cuối file.
+Bước 3a thêm **toà nhà** trên trang: nút toà nhà trên thanh trên cùng mở một bảng gồm phòng của bạn (mở / đóng / tạm
+dừng, bấm được ngay trên máy này) và phòng của mọi người, chia theo tầng, mỗi tầng 4 phòng. Chỉ xem.
+
+Chưa có: toà nhà 3D trong văn phòng (bước 3b), gõ cửa / QR (bước 4), admin. Lộ trình ở cuối file.
 
 ## Cách sử dụng
 
@@ -36,6 +39,28 @@ Chưa có: xem phòng của người khác trong văn phòng 3D (bước 3), gõ
 | `team policy details on\|off` | Cài đặt của team, **chỉ người tạo team**: cho phòng mở hiện tên file và câu lệnh (đã che bí mật). Mặc định tắt. |
 
 Tên mặc định lấy từ `git config --global user.name`, nếu không có thì lấy tên tài khoản máy.
+
+### Toà nhà trên trang (bước 3a)
+
+- Nút **toà nhà** (`#btn-team`, thanh trên cùng) chỉ hiện khi máy này đã vào team. Bảng: `src/components/office/TeamModal.tsx`
+  (markup), `src/office/ui/team.js` (vẽ và nối sự kiện), `src/styles/team.css`.
+- Chia tầng: `src/shared/team-floors.js`, `ROOMS_PER_FLOOR = 4` (bốn phòng ban của cánh trụ sở, giống toà nhà 3D ở bước
+  3b). Phòng giữ đúng thứ tự hub gửi (thứ tự vào team), nên mở / đóng / offline không làm ai đổi tầng.
+- Thẻ phòng: offline (mờ), đóng (sọc, chỉ ghi "Đang đóng cửa"), mở (từng người: chức danh · project, đang làm gì,
+  số subagent, việc gần nhất). Chỉ dùng text, không `innerHTML`.
+- **Phòng của bạn**: ba nút Mở / Đóng / Tạm dừng. Chỉ bấm được trên chính máy này (`state.isLocal`); điện thoại qua
+  tunnel chỉ xem và thấy dòng nhắc. Đang tạm dừng mà bấm Mở / Đóng thì bật lại rồi đặt chế độ đó.
+- Trang nhận dữ liệu qua live stream: `team` trong snapshot, và `{ k: 'team', team }` mỗi khi relay đổi (gộp tối đa
+  1 giây một lần). Bảng đang mở tự vẽ lại; dòng "x phút trước" làm mới mỗi 30 giây.
+- Demo (`?demo`): `src/office/demo/demo-team.js`, team "Demo Studio" với 9 đồng đội giả trên 3 tầng.
+
+**API mới của server (máy member)**
+
+| Method | Path | Body | Trả về |
+| --- | --- | --- | --- |
+| `POST` | `/api/team/room` | `{ mode: 'open' \| 'closed' }` hoặc `{ paused: true \| false }` | `{ ok: true, team }` (trạng thái relay mới) · `{ ok: false, code }` (vd. `bad-mode`, `not-in-team`) |
+
+Chỉ nhận từ chính máy này: loopback, không qua tunnel, cùng origin, `Content-Type: application/json`. Còn lại `403`.
 
 ### API của hub
 
@@ -201,6 +226,12 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
   dữ liệu thô B nhận không có đường dẫn, prompt hay pid; sự kiện giả lập đọc `secret.ts` không lộ tên file khi `details`
   tắt; B không bật được `details`; A bật thì thấy lệnh nhưng token vẫn bị che; đóng phòng, tạm dừng, bật lại; hub tắt rồi
   chạy lại thì tự kết nối; mất kết nối thì không hiện dữ liệu cũ; A rời team thì phòng A biến mất và A ngừng kết nối.
+- `tests/unit/team-floors.test.mjs` (bước 3a): chia tầng 4 phòng theo thứ tự hub; đổi chế độ / offline không đổi tầng;
+  dữ liệu rác; trạng thái thẻ phòng; đếm người, việc gần nhất.
+- Bước 3a đã chạy tay: Playwright với `?demo` (3 tầng, 9 phòng, phòng đóng không lộ người, đổi phòng của mình, tiếng
+  Việt trên điện thoại không tràn ngang); `wrangler dev` cộng hai server A, B: B mở / tạm dừng / bật lại / đóng qua
+  `POST /api/team/room` và A thấy theo, bảng của A tự cập nhật không cần tải lại; chế độ sai, body rỗng, origin lạ, sai
+  `Content-Type` đều bị từ chối. Script và spec chạy tay đã xoá sau khi chạy.
 - Đã chạy tay end-to-end với `wrangler dev` (hai thư mục data): Keychain và file quyền `600`, `leave` xoá cả mục
   Keychain, `restore` trên máy mới, các thông báo lỗi khi hub không chạy, hub dùng `http` ngoài internet, địa chỉ không
   phải hub, có / không có `CREATE_TOKEN`.
@@ -224,7 +255,10 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
 
 1. ✅ Danh tính, hub, tạo / mời / vào / rời / khôi phục (tài liệu này)
 2. ✅ Relay: máy member gửi phòng đã lọc lên hub, nhận phòng của mọi người về; mở / đóng / tạm dừng; cài đặt `details` chỉ người tạo team đổi được
-3. Xem team trong văn phòng 3D: mỗi thành viên một phòng ban, mỗi tầng 6 phòng, thang máy, sơ đồ toà nhà; phòng người khác chỉ xem
+3. Xem team:
+   - 3a ✅ Bảng toà nhà trên trang: phòng của bạn (mở / đóng / tạm dừng), phòng mọi người theo tầng, 4 phòng một tầng
+   - 3b Toà nhà 3D: mỗi thành viên một phòng ban ở cánh trụ sở, 4 phòng một tầng, thang máy đổi tầng, kính mờ cho phòng
+     đóng, bảng chỉ dẫn ở sảnh; người trong phòng khác chỉ ngồi, chỉ xem
 4. Phòng đóng: gõ cửa, QR / mã một lần, danh sách tin cậy, thu hồi, nhật ký ra vào
 5. Chạy thử 3–4 người
 6. Mã hoá đầu cuối cho phòng đóng, cài qua agent-setup, mở cho cả team

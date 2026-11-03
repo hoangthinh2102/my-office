@@ -7,6 +7,7 @@ import MacDrawer from '@/components/office/MacDrawer';
 import PhoneModal from '@/components/office/PhoneModal';
 import WrappedModal from '@/components/office/WrappedModal';
 import DirectorModal from '@/components/office/DirectorModal';
+import TeamModal from '@/components/office/TeamModal';
 import Toast from '@/components/office/Toast';
 import OfficeBoot from '@/components/OfficeBoot';
 
@@ -24,6 +25,7 @@ export default function OfficePage() {
       <PhoneModal />
       <WrappedModal />
       <DirectorModal />
+      <TeamModal />
       <Toast />
       <OfficeBoot />
     </div>
