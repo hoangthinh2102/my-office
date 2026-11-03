@@ -5,7 +5,8 @@
 // The hub only relays: it never holds a member's code, prompts or conversations, and it has no way to send a command
 // to anyone's computer.
 import {
-  INVITE_TTL_MS, NONCE_KEEP_MS, cleanName, formatInvite, hashCode, isInviteCode, keyId, makeInviteCode, verifyRequest,
+  INVITE_TTL_MS, MSG_MAX, NONCE_KEEP_MS, cleanEvents, cleanName, cleanRoom, formatInvite, hashCode, isInviteCode, keyId,
+  makeInviteCode, verifyRequest, wsHeaders,
 } from '../../shared/team-protocol.js';
 
 const SCHEMA = [
@@ -18,7 +19,10 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS grants (room TEXT NOT NULL, viewer TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER, PRIMARY KEY (room, viewer))',
   'CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, actor TEXT, action TEXT NOT NULL, detail TEXT)',
   'CREATE TABLE IF NOT EXISTS nonces (nonce TEXT PRIMARY KEY, at INTEGER NOT NULL)',
+  // each member's room as last sent (already cleaned), saved at most every ROOM_SAVE_MS: the hub may sleep between messages
+  'CREATE TABLE IF NOT EXISTS rooms (member_id TEXT PRIMARY KEY, data TEXT NOT NULL, at INTEGER NOT NULL)',
 ];
+const ROOM_SAVE_MS = 30_000;   // (the Workers Free plan allows 100,000 rows written a day)
 const MAX_OPEN_INVITES = 10;      // per member, at one time
 const JOIN_FAILS_MAX = 20;        // wrong invite codes per team in JOIN_FAILS_WINDOW before joining is paused
 const JOIN_FAILS_WINDOW = 10 * 60_000;
@@ -35,6 +39,7 @@ export class TeamCore {
     this.sql = sql; this.now = now;
     // the tables are made only when a team is created, so a request for a team that doesn't exist writes nothing
     this.ready = this.rows("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'meta'").length > 0;
+    if (this.ready) for (const q of SCHEMA) this.sql.exec(q);   // (a team made by an older version gets the tables added since)
   }
   init() { if (!this.ready) { for (const q of SCHEMA) this.sql.exec(q); this.ready = true; } }
   rows(q, ...b) { return this.sql.exec(q, ...b).toArray(); }
@@ -53,6 +58,7 @@ export class TeamCore {
         case 'POST invites': return await this.invite(req);
         case 'GET me': return await this.me(req);
         case 'POST leave': return await this.leave(req);
+        case 'POST policy': return await this.policy(req);
         default: fail(404, 'not-found');
       }
     } catch (e) {
@@ -137,7 +143,81 @@ export class TeamCore {
     const m = await this.member(req);
     const members = this.rows('SELECT id, name, role, joined_at FROM members WHERE left_at IS NULL ORDER BY joined_at')
       .map((r) => ({ id: r.id, name: r.name, role: r.role, joinedAt: r.joined_at }));
-    return { status: 200, body: { team: this.teamOut(), me: { id: m.id, name: m.name, role: m.role }, members } };
+    return { status: 200, body: { team: this.teamOut(), me: { id: m.id, name: m.name, role: m.role, owner: this.isOwner(m.id) }, members, policy: this.policyOut() } };
+  }
+
+  /* ---------- the team's settings ----------
+     details: whether open rooms may show file names and commands. Off by default; only the team's creator (the key the
+     team was made with, kept as root_key) may change it, until there is an admin role. */
+  isOwner(memberId) { return !!this.row('SELECT 1 AS x FROM devices WHERE member_id = ? AND key = ? AND revoked_at IS NULL', memberId, this.meta('root_key')); }
+  policyOut() { return { details: this.meta('policy_details') === '1' }; }
+  async policy(req) {
+    const m = await this.member(req), b = this.body(req);
+    if (!this.isOwner(m.id)) fail(403, 'not-owner');
+    if (typeof b.details !== 'boolean') fail(400, 'bad-request');
+    this.sql.exec('INSERT INTO meta (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v', 'policy_details', b.details ? '1' : '0');
+    this.log(m.id, 'policy', `details=${b.details}`);
+    return { status: 200, body: { policy: this.policyOut() }, policy: this.policyOut() };
+  }
+
+  /* ---------- the relay ----------
+     The Durable Object (team.js) owns the sockets; these work out what to tell whom. online(id) says whether a member
+     has a socket open now. Every message out is the same for every other member, so the caller sends it to all of
+     them but its author. */
+  async authWs(req) {
+    const u = new URL(req.path, 'http://hub');
+    return this.member({ ...req, path: u.pathname, body: '', headers: wsHeaders(u.searchParams) });
+  }
+  members() { return this.rows('SELECT id, name FROM members WHERE left_at IS NULL ORDER BY joined_at'); }
+  saved(id) {
+    this.live ||= new Map();
+    if (!this.live.has(id)) {
+      const r = this.row('SELECT data, at FROM rooms WHERE member_id = ?', id);
+      this.live.set(id, r ? { room: JSON.parse(r.data), at: r.at, savedAt: r.at } : null);
+    }
+    return this.live.get(id);
+  }
+  roomOut(member, online) {
+    const r = online ? this.saved(member.id) : null;
+    return { member: { id: member.id, name: member.name }, online: !!online, ...(r ? { ...r.room, at: r.at } : { mode: 'closed', counts: { work: 0, rest: 0, wait: 0 } }) };
+  }
+  /** What a member gets when it connects: who it is, the team's settings, and every other member's room. */
+  hello(viewerId, online) {
+    const me = this.members().find((m) => m.id === viewerId);
+    return { t: 'hello', team: this.teamOut(), me: me ? { id: me.id, name: me.name, owner: this.isOwner(me.id) } : null, policy: this.policyOut(),
+      rooms: this.members().filter((m) => m.id !== viewerId).map((m) => this.roomOut(m, online(m.id))) };
+  }
+  /** A member came online or went offline. */
+  presenceOut(memberId, online) {
+    const m = this.members().find((x) => x.id === memberId);
+    return m ? { t: 'room', room: this.roomOut(m, online) } : null;
+  }
+  /** A message from a member's socket. Returns what to pass on to everyone else ([] for nothing). */
+  ingest(memberId, text) {
+    if (typeof text !== 'string' || text.length > MSG_MAX) return [];
+    let msg; try { msg = JSON.parse(text); } catch { return []; }
+    const m = this.members().find((x) => x.id === memberId);
+    if (!m || !msg || typeof msg !== 'object') return [];
+    const { details } = this.policyOut(), t = this.now();
+    if (msg.t === 'room') {
+      const room = cleanRoom(msg.room, { details });
+      if (!room) return [];
+      const prev = this.saved(memberId), changed = !prev || JSON.stringify(prev.room) !== JSON.stringify(room);
+      const entry = { room, at: t, savedAt: prev?.savedAt || 0 };
+      if (t - entry.savedAt >= ROOM_SAVE_MS || (changed && prev?.room.mode !== room.mode)) {
+        this.sql.exec('INSERT INTO rooms (member_id, data, at) VALUES (?, ?, ?) ON CONFLICT (member_id) DO UPDATE SET data = excluded.data, at = excluded.at', memberId, JSON.stringify(room), t);
+        entry.savedAt = t;
+      }
+      this.live.set(memberId, entry);
+      return changed ? [{ t: 'room', room: this.roomOut(m, true) }] : [];
+    }
+    if (msg.t === 'ev') {
+      // only an open room's events go anywhere
+      if (this.saved(memberId)?.room.mode !== 'open') return [];
+      const list = cleanEvents(msg.list, { details });
+      return list.length ? [{ t: 'ev', member: memberId, list }] : [];
+    }
+    return [];
   }
 
   async leave(req) {
@@ -145,8 +225,10 @@ export class TeamCore {
     this.sql.exec('UPDATE members SET left_at = ? WHERE id = ?', t, m.id);
     this.sql.exec('UPDATE devices SET revoked_at = ? WHERE member_id = ? AND revoked_at IS NULL', t, m.id);
     this.sql.exec('DELETE FROM grants WHERE room = ? OR viewer = ?', m.id, m.id);
+    this.sql.exec('DELETE FROM rooms WHERE member_id = ?', m.id);
+    this.live?.delete(m.id);
     this.log(m.id, 'leave');
-    return { status: 200, body: { ok: true } };
+    return { status: 200, body: { ok: true }, left: m.id };
   }
 
   teamOut() { return { id: this.meta('team_id'), name: this.meta('name') }; }

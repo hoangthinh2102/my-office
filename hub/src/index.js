@@ -5,6 +5,8 @@
 //   POST /t/<team>/join      join with an invite code (signed by the newcomer's key)
 //   GET  /t/<team>/me        the team, who you are, the members
 //   POST /t/<team>/leave     leave the team
+//   POST /t/<team>/policy    the team's settings ({ details }; the team's creator only)
+//   GET  /t/<team>/ws        a member's WebSocket: its room up, everyone else's rooms down (signed in the query)
 //   GET  /j/<team>.<code>    an invite link opened in a browser: how to use it
 //
 // Every request and answer is described in docs/features/team-mode.md.
@@ -12,9 +14,9 @@ import { isTeamId, randomId } from '../../shared/team-protocol.js';
 
 export { Team } from './team.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
-const ACTIONS = new Set(['invites', 'join', 'me', 'leave']);
+const ACTIONS = new Set(['invites', 'join', 'me', 'leave', 'policy', 'ws']);
 
 const hub = {
   async fetch(request, env) {

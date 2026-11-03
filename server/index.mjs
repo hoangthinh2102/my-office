@@ -34,6 +34,7 @@ import { createSlash } from './slash.mjs';
 import { saveAttachments, dropAttachments, sweepAttachments } from './attach.mjs';
 import { createPerf } from './perf.mjs';
 import { pickLang, createT } from '../src/i18n/index.js';
+import { createRelay } from './team/relay.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.OFFICE_PORT) || 4310;
@@ -291,6 +292,8 @@ const pub = (s) => ({ id: s.id, sid: rootOf(s.sid) || null, pid: s.pid, name: s.
   dayFirst: s.dayFirst || null, role: company.roleOf(s.sid)?.title || '',
   git: gitOf(s),
   usage: s.usage?.model ? { cost: Math.round(s.usage.cost * 100) / 100, ...liveCtx(s), model: s.usage.model, out: s.usage.out } : null });
+// Team mode (docs/features/team-mode.md): only while this computer is in a team; what leaves it is cut down in roomView
+const team = createRelay({ dataDir: DATA_DIR, sessions: () => [...sessions.values()].map(pub), redact, log: (line) => console.log(line) });
 function gitOf(s) { const r = s.cwd && git.repoOf(s.cwd); return r ? { repo: r.name, branch: r.branch, dirty: r.dirty, ahead: r.ahead, ci: r.ci, ciName: r.ciName, ciUrl: r.ciUrl, born: r.born || null } : null; }
 // context: exact from the status line while it reports (last 15 min), else estimated from the transcript
 const liveCtx = (s) => (s.live?.ctxMax && s.live.ctx != null && Date.now() - s.live.at < 15 * 60e3 ? { ctx: s.live.ctx, ctxMax: s.live.ctxMax, exact: true } : { ctx: s.usage.ctx, ctxMax: ctxMax(s.usage) });
@@ -470,6 +473,7 @@ let sent = 0, polledAt = 0;   // (sent: how many messages so far, the number of 
 const watching = () => clients.size > 0 || Date.now() - polledAt < 60_000;   // (a page open: a stream, or asking now and then)
 function broadcast(obj) {
   for (const c of clients) send(c.res, obj);
+  team.notify(obj);
   backlog.push([++sent, JSON.stringify(obj)]); if (backlog.length > 400) backlog.shift();
   for (const w of waiting) w();
   if (RECORDED.has(obj.k)) record(obj);
@@ -2605,6 +2609,11 @@ const server = http.createServer((req, res) => {
     req.on('close', () => { waiting.delete(answer); clearTimeout(timer); });
     return;
   }
+  if (url.pathname === '/api/team') {   // team mode: this computer's room and everyone else's, as the hub sent them (this computer only)
+    if (!isLoopback(req)) { json(res, 403, { error: 'local only' }); return; }
+    json(res, 200, team.state());
+    return;
+  }
   if (url.pathname === '/api/log') {   // ?id= someone in the office; ?sid= a closed conversation (the session list's "all")
     const csid = String(url.searchParams.get('sid') || ''), old = csid ? recent.get(csid) : null, d = csid ? dms[csid] : null;
     const s = csid ? (old ? { sid: old.sid, cwd: old.cwd, transcript: old.transcript } : d?.sid && d.dir ? { sid: d.sid, cwd: d.dir } : null)
@@ -2839,5 +2848,6 @@ server.listen(PORT, HOST, () => {
   scanCleanups().catch(() => {});   // macOS paths; elsewhere there may be nothing to scan
   trackOwners();
   startTrend();
+  team.start();
   console.log(tr('server.console.listening', { port: PORT, phone: HOST === '127.0.0.1' ? tr('server.console.lanOff') : lanUrl(false) || tr('server.console.noLan') }));
 });
