@@ -18,7 +18,7 @@ import { invitePage } from './invite-page.js';
 
 export { Team } from './team.js';
 
-const VERSION = '0.4.0';
+const VERSION = '0.4.1';
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 const ACTIONS = new Set(['invites', 'join', 'me', 'leave', 'policy', 'ws', 'knock', 'answer', 'revoke', 'code', 'redeem', 'access', 'promote', 'stepdown', 'remove']);
 
@@ -29,11 +29,11 @@ const hub = {
 
     const invite = url.pathname.match(/^\/j\/([A-Za-z0-9_-]{22})\.([A-Za-z0-9-]+)$/);
     if (invite && request.method === 'GET') {
-      // the team's name, from its Durable Object (nothing is written for a team that doesn't exist)
-      let team = null;
-      try { team = (await (await forward(env, invite[1], 'name', new Request(request.url), url)).json()).name || null; } catch { /* the page works without it */ }
-      const html = invitePage({ link: `${url.origin}${url.pathname}`, team, accept: request.headers.get('accept-language'), asked: url.searchParams.get('lang'), setupUrl: env.SETUP_URL || undefined });
-      return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer',
+      // the team's name and whether the link has run out, from its Durable Object (nothing is written for a team that doesn't exist)
+      let team = null, expired = false;
+      try { ({ name: team = null, expired = false } = await (await forward(env, invite[1], 'name', new Request(request.url), url)).json()); } catch { /* the page works without it */ }
+      const html = invitePage({ link: `${url.origin}${url.pathname}`, team: team || null, expired: expired === true, accept: request.headers.get('accept-language'), asked: url.searchParams.get('lang'), setupUrl: env.SETUP_URL || undefined });
+      return new Response(html, { status: expired === true ? 410 : 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer',
         'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" } });
     }
 

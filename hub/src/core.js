@@ -30,6 +30,7 @@ const SCHEMA = [
 ];
 const ROOM_SAVE_MS = 30_000;   // (the Workers Free plan allows 100,000 rows written a day)
 const MAX_OPEN_INVITES = 10;      // per member, at one time
+const INVITE_KEEP_MS = 7 * 24 * 3600_000;   // how long an expired invite is remembered
 const JOIN_FAILS_MAX = 20;        // wrong invite codes per team in JOIN_FAILS_WINDOW before joining is paused
 const JOIN_FAILS_WINDOW = 10 * 60_000;
 const BODY_MAX = 16 * 1024;
@@ -87,7 +88,7 @@ export class TeamCore {
         case 'POST code': return await this.viewCode(req);
         case 'POST redeem': return await this.redeem(req);
         case 'GET access': return await this.accessOut(req);
-        case 'GET name': return { status: 200, body: { name: this.ready ? this.meta('name') || null : null } };   // (the Worker's invite page only: not in its ACTIONS)
+        case 'GET name': return await this.pageInfo(req);   // (the Worker's invite page only: not in its ACTIONS)
         default: fail(404, 'not-found');
       }
     } catch (e) {
@@ -134,12 +135,21 @@ export class TeamCore {
     return { status: 201, body: { team: { id: req.teamId, name: team }, me: this.meOut(id) } };
   }
 
+  /** For the invite page: the team's name, and whether the link's code was good but has run out. A code that never
+   *  was gets the same answer as a live one, so the page can't be used to try codes. */
+  async pageInfo(req) {
+    if (!this.ready) return { status: 200, body: { name: null, expired: false } };
+    const code = /\.([A-Za-z0-9-]+)$/.exec((req.path || '').split('?')[0])?.[1];
+    const inv = code && isInviteCode(code) ? this.row('SELECT expires_at FROM invites WHERE hash = ?', await hashCode(this.meta('team_id'), code)) : null;
+    return { status: 200, body: { name: this.meta('name') || null, expired: !!inv && inv.expires_at < this.now() } };
+  }
+
   async invite(req) {
     const m = await this.member(req), t = this.now();
     if (!this.isAdmin(m.id)) fail(403, 'not-owner');   // (only admins bring people in; the code predates admins)
     const open = this.row('SELECT COUNT(*) AS n FROM invites WHERE created_by = ? AND expires_at > ?', m.id, t).n;
     if (open >= MAX_OPEN_INVITES) fail(429, 'too-many-invites');
-    this.sql.exec('DELETE FROM invites WHERE expires_at < ?', t - 24 * 3600_000);   // (expired a day ago: nothing left to show)
+    this.sql.exec('DELETE FROM invites WHERE expires_at < ?', t - INVITE_KEEP_MS);   // (kept a while so its page can say it ran out)
     const teamId = this.meta('team_id'), code = makeInviteCode(), expiresAt = t + INVITE_TTL_MS;
     this.sql.exec('INSERT INTO invites (hash, created_by, created_at, expires_at) VALUES (?, ?, ?, ?)', await hashCode(teamId, code), m.id, t, expiresAt);
     this.log(m.id, 'invite');
