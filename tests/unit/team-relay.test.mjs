@@ -124,6 +124,8 @@ test('hub relay: rooms are saved for after a sleep, and a member who leaves is g
   const woken = new TeamCore(sql, { now: () => clock.t });   // (the Durable Object evicted and back)
   assert.equal(woken.hello(people[1].id, () => true).rooms[0].people[0].id, 'abcdef');
   assert.equal(woken.hello(people[1].id, () => false).rooms[0].people, undefined);   // offline: nothing but the name
+  assert.equal((await send(people[0].keys, 'POST', 'leave', {})).body.error, 'last-admin');   // (someone must still be able to invite)
+  await send(people[0].keys, 'POST', 'promote', { member: people[1].id });
   const left = await send(people[0].keys, 'POST', 'leave', {});
   assert.equal(left.left, a);
   assert.deepEqual(woken.hello(people[1].id, () => true).rooms, []);
