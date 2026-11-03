@@ -1,0 +1,36 @@
+// Team mode's building: your own room (open, closed, paused) and everyone else's, floor by floor. View only.
+// Static markup: src/office/ui/team.js fills it in and wires it.
+import { getT } from '@/i18n/server';
+
+export default async function TeamModal() {
+  const t = await getT();
+  return (
+    <div className="modal team-modal" id="team-modal" hidden>
+      <div className="modal-card team-card" role="dialog" aria-modal="true" aria-labelledby="team-title">
+        <header className="dir-head">
+          <span className="dir-mark" data-icon="building"></span>
+          <div className="dir-titles">
+            <h2 id="team-title">{t('team.open')}</h2>
+            <span className="dir-sub" id="team-sub"></span>
+          </div>
+          <button className="dir-x" type="button" data-close aria-label={t('common.close')}><span data-icon="x"></span></button>
+        </header>
+        <div className="team-body">
+          <section className="team-mine" id="team-mine">
+            <div className="team-mine-head">
+              <b>{t('team.mine.title')}</b>
+              <div className="team-seg" role="group" aria-label={t('team.mine.title')}>
+                <button type="button" className="team-seg-b" data-mode="open"><span data-icon="door"></span>{t('team.mine.open')}</button>
+                <button type="button" className="team-seg-b" data-mode="closed"><span data-icon="lock"></span>{t('team.mine.closed')}</button>
+                <button type="button" className="team-seg-b" data-mode="paused"><span data-icon="pause"></span>{t('team.mine.pause')}</button>
+              </div>
+            </div>
+            <p className="dir-note" id="team-mine-note"></p>
+          </section>
+          <div className="team-floors" id="team-floors"></div>
+          <p className="dir-note team-foot">{t('team.readOnly')}</p>
+        </div>
+      </div>
+    </div>
+  );
+}

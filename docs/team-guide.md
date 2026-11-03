@@ -67,6 +67,15 @@ node bin/cli.mjs team rooms         # các phòng bạn đang thấy
 
 Lệnh có hiệu lực sau vài giây, không cần khởi động lại.
 
+**Hoặc bấm trên trang**: vào team rồi thì trên thanh trên cùng có nút **toà nhà**. Bấm vào sẽ thấy:
+
+- **Phòng của bạn**, với ba nút **Mở / Đóng / Tạm dừng** (giống các lệnh trên). Chỉ bấm được trên chính máy chạy
+  My Office; mở trang trên điện thoại thì chỉ xem.
+- **Phòng của mọi người**, chia theo tầng, mỗi tầng 4 phòng. Phòng mở hiện từng người đang làm gì; phòng đóng chỉ ghi
+  "Đang đóng cửa"; người đang offline thì thẻ mờ đi. Bảng tự cập nhật, không cần tải lại trang.
+
+Muốn xem thử trước khi vào team: mở `http://localhost:4310/?demo`, rồi bấm nút toà nhà (team giả "Demo Studio").
+
 **Phòng mở cho người khác thấy**: từng phiên đang làm, chờ hay nghỉ; tên project (repo); chức danh; số subagent; **loại**
 việc đang làm (đọc file, sửa file, chạy lệnh…). Tên file và câu lệnh chỉ hiện nếu người tạo team bật cài đặt
 `team policy details on` (mặc định tắt). Kể cả khi đó, mật khẩu và token vẫn bị che.

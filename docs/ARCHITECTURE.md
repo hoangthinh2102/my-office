@@ -31,7 +31,7 @@ Claude Code ──hooks (curl, loopback only)──▶ server/index.mjs ──SS
 | `agent-support.mjs` | Reads what the agent-support skills leave on this computer (`~/.agent-support`): the workspace's repos, each Lark task's state, the log of MRs opened; ties performance jobs to Lark tasks. Read only. |
 | `perf.mjs` | The performance board: one line per job (a prompt until Stop) in `data/perf/YYYY-MM-DD.jsonl` with its tokens, API-price cost, time, tool failures and overtime; per-person scores (`/api/perf`). |
 | `prefs.mjs` | The office's language (`data/prefs.json`, `OFFICE_LANG`) and the server's translator `tr()`. |
-| `team/identity.mjs`, `team/client.mjs`, `team/relay.mjs` | Team mode ([docs/features/team-mode.md](features/team-mode.md)): this computer's team key (the macOS keychain, else `data/team-key`), the signed calls to the team hub (`my-office team …`), and the relay: one WebSocket that sends this room, cut down to what its mode allows, and keeps everyone else's for `GET /api/team`. The protocol itself is `shared/team-protocol.js`, used by the hub too. |
+| `team/identity.mjs`, `team/client.mjs`, `team/relay.mjs` | Team mode ([docs/features/team-mode.md](features/team-mode.md)): this computer's team key (the macOS keychain, else `data/team-key`), the signed calls to the team hub (`my-office team …`), and the relay: one WebSocket that sends this room, cut down to what its mode allows, and keeps everyone else's for `GET /api/team` and the page's building (`{k:'team'}` in the live stream; `POST /api/team/room` opens, closes or pauses this room, from this computer only). The protocol itself is `shared/team-protocol.js`, used by the hub too. |
 
 The team hub is its own small program in `hub/`: a Cloudflare Worker with one Durable Object (SQLite) per team. `hub/src/core.js` holds the rules and runs under Node's SQLite in the unit tests.
 
@@ -99,7 +99,8 @@ engine switches to demo mode and talks to no API.
 | `core/optimize.js` | 141 | Merging static meshes into fewer draw calls, then starting. |
 | `core/schedule.js` | 36 | Office hours, set by the director (the director's office → Office hours; kept by the server, server/company.mjs) and lived by everyone: arriving in the morning, breakfast at the pantry until work starts, lunch, the midday nap, the afternoon coffee, packing up and going home when work ends. |
 | `core/state.js` | 3 | Values that more than one module assigns (the clock, the selection, mode switches…), on one shared object so any module can change them. |
-| `demo/demo.js` | 289 | Demo mode: fictional projects and a fictional Mac. |
+| `demo/demo-team.js` | 43 | Demo mode's team (team mode's building, ui/team.js): nine pretend teammates on three floors, some rooms open, some closed, one person offline, and work going on in the open rooms. |
+| `demo/demo.js` | 294 | Demo mode: fictional projects and a fictional Mac. |
 | `interact/first-person.js` | 261 | First person: walk the office as your own character, and (with the city outside) down the lift and out on the street: the pavements, the zebras (the traffic stops for you), the shops, the bánh mì cart. |
 | `interact/place-cards.js` | 201 | Place cards: what happens at each place. |
 | `interact/place-chips.js` | 182 | Place chips over the furniture and label decluttering. |
@@ -146,28 +147,30 @@ engine switches to demo mode and talks to no API.
 | `scene/lights.js` | 35 | Sun, sky light and the room lamps (per-room night lighting on the company floor). |
 | `scene/quality.js` | 77 | Graphics quality: Auto (the default), Low, Medium or High, each viewer's own choice (Settings → Display). |
 | `scene/renderer.js` | 91 | Renderer, cameras, orbit controls, post-processing and environment light. |
-| `ui/activity.js` | 300 | The activity column and the session list. |
+| `ui/activity.js` | 302 | The activity column and the session list. |
 | `ui/camera-bar.js` | 58 | The camera toolbar. |
 | `ui/chat-avatars.js` | 72 | Round photos for the group chat (group-chat-view.js): each person's own chibi, head and shoulders, drawn once by the office's renderer (the way Settings draws its portraits: same materials, light and tone mapping) and kept as a data URL. |
 | `ui/clip-music.js` | 122 | The clip's music: an original lo-fi loop made right here, nothing borrowed (no samples, no files): a Rhodes-like FM electric piano on Fmaj9 – Em7 – Dm9 – G13, a round bass, a swung boom-bap kit, a soft pentatonic lead, vinyl crackle and a small Schroeder reverb. |
-| `ui/director.js` | 477 | The director's office (the briefcase in the top bar; markup: src/components/office/DirectorModal.tsx). |
+| `ui/director.js` | 731 | The director's office (the briefcase in the top bar; markup: src/components/office/DirectorModal.tsx). |
 | `ui/event-text.js` | 123 | How events read on screen: actions per event type, verbs, bubble text, streamer mode. |
 | `ui/group-chat-view.js` | 519 | The group chat's window (the conversation: group-chat.js), drawn after the Vietnamese messenger's group chat on a phone (its own web CSS and string table, and a 2026 screenshot of the app, for the colours, sizes and words): the blue gradient bar with the back chevron, the group's name and "👥 N thành viên", call, video and ☰; the pinned message under it; the conversation on a lavender-grey ground, gathered at the bottom like the app's, the others' white bubbles on the left (the name at the top inside the first of a run, the face beside it, the time inside the last), yours pale blue on the right with who has seen it; dark pills for the time lines, white ones for what the group does; "Tin nhắn mới" where you stopped reading; replies quoting what they answer; a recalled message's "Tin nhắn đã được thu hồi"; the ♡ on a bubble's corner and a small pill once someone reacts (hover a bubble for the six, a reply and, on yours, recall); polls and reminders as cards in the middle; "… đang soạn tin"; the input bar: stickers and emoji, "Tin nhắn", ••• (a poll, @ someone), the mic and a photo, or send once you type. |
 | `ui/group-chat.js` | 165 | The company group chat, on the page (the window: group-chat-view.js; the people and what they say: src/shared/chat-engine.js). |
-| `ui/icons.js` | 86 | Stroke icons (24 px grid) and the icon helper. |
+| `ui/icons.js` | 88 | Stroke icons (24 px grid) and the icon helper. |
 | `ui/image-view.js` | 28 | Images in the feed: a session that read, wrote or edited an image gets a thumbnail on that line (activity.js), and a click opens it here, large, over the office (the server serves it by id: GET /api/image). |
 | `ui/lite.js` | 47 | List mode: the sessions as cards, no 3D. |
 | `ui/look-switch.js` | 19 | Switching the character look. |
 | `ui/mac-drawer.js` | 669 | The Mac drawer: memory, CPU, dev servers, plan limits, cleanup. |
 | `ui/notify.js` | 54 | Notifications on this phone (Web Push: server/push.mjs sends them, public/sw.js shows them): Claude's answers in the group chat and an approval waiting, even with the office closed and the phone locked. |
-| `ui/permissions.js` | 148 | Approve / deny cards and Claude's questions. |
+| `ui/permissions.js` | 161 | Approve / deny cards and Claude's questions. |
 | `ui/phone.js` | 90 | The office on a phone: an app-like layout for small screens, upright or held sideways. |
 | `ui/photo.js` | 138 | Photo mode: the office alone over the whole window, the camera free (any angle, closer or further, pan with the right button), then a PNG at the screen's size, Full HD or 4K. |
 | `ui/portraits.js` | 62 | Portraits of the two character looks for Settings → Characters: two people in each look, drawn by the office's own renderer (same materials, light and tone mapping, so they match what you will see) into a canvas, the first time the tab opens. |
+| `ui/recent-rail.js` | 79 | The session list's "All" filter: everyone in the office, then every Claude Code conversation of the last two weeks that isn't open now (server/recent.mjs), under "Closed". |
 | `ui/session-account.js` | 54 | "Change account" in a session's drawer (on this computer only): the accounts of the plan card, each with what it has left. |
-| `ui/session-drawer.js` | 382 | The session drawer: chat, steps, subagents. |
-| `ui/settings.js` | 122 | Settings popover: backdrop, floor plan, look, time, toggles. |
+| `ui/session-drawer.js` | 431 | The session drawer: chat, steps, subagents. |
+| `ui/settings.js` | 127 | Settings popover: backdrop, floor plan, look, time, toggles. |
 | `ui/task-sheet.js` | 98 | "Giao việc": giving Claude work from the group chat (server/tasks.mjs runs it on the Mac). |
+| `ui/team.js` | 128 | Team mode's building (the building button in the top bar; markup: src/components/office/TeamModal.tsx): your own room, which you can open, close or pause from this computer, and everyone else's rooms floor by floor, view only. |
 | `ui/timelapse.js` | 156 | A 15-second clip of the office to share: square (1080 × 1080) for a feed or vertical (1080 × 1920) for Reels, TikTok and Shorts, the camera turning slowly round the floor, people at four times their pace, the day running into the evening (a clock in the corner from 8:00 to 23:00, the lights coming on at six), a title at the start and the day's numbers over the last two and a half seconds, with an original lo-fi tune under it (clip-music.js; it can be turned off). |
 | `ui/tips.js` | 115 | The first visit: a short tour of what you can click. |
 | `ui/topbar.js` | 217 | Phone modal, notifications, the night switch. |
@@ -219,7 +222,7 @@ engine switches to demo mode and talks to no API.
 | `world/props/dev-servers.js` | 85 | Mini servers for each running dev server, and forgotten ones. |
 | `world/props/game-tv.js` | 94 | The lounge TV (company floor): a 55" TV on a low walnut media unit against the back wall, facing the sofa, with a games console standing beside it, two controllers lying on top, a soundbar, a plant, and a glow on the wall behind it that takes the colour of the picture. |
 | `world/props/karaoke.js` | 109 | The karaoke box (company floor), where the front phone booth was, like the coin-op booths in Vietnamese malls: a soundproof cabin on a dark base, black frame, purple acoustic felt at the back and on the side toward the phone booth, glass toward the room so you can watch the singers, a lit KARAOKE band over the glass and over the door, an LED strip round the roof and the base. |
-| `world/props/neon.js` | 22 | The neon sign. |
+| `world/props/neon.js` | 35 | The neon sign: the Gamota logo (public/assets/gamota-logo.png, white on clear) glowing pink. |
 | `world/props/printer.js` | 25 | The printer that prints a page when a session finishes. |
 | `world/props/shredder.js` | 178 | Paper by context: an in-tray on every desk whose stack grows with its session's context window (loose sheets and a red flag past 85 %), and a paper shredder by the printer. |
 | `world/props/string-lights.js` | 29 | String lights along the top of the walls. |

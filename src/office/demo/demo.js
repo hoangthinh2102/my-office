@@ -1,6 +1,8 @@
 // Demo mode: fictional projects and a fictional Mac.
 import { state } from '../core/state.js';
 import { onDirectorMsg } from '../ui/director.js';
+import { onTeam } from '../ui/team.js';
+import { startDemoTeam } from './demo-team.js';
 import { setSchedule } from '../core/schedule.js';
 import { $, STATIC, rand, replay } from '../core/env.js';
 import { CHAIR_IDLE, chairs } from '../world/desks.js';
@@ -174,6 +176,7 @@ export function startDemo() {
     { role: 'claude', ts: t0 + 170e3, text: demoReply(2) },
   ]);
   state.connectedOnce = true; setConn(true); queueUi();
+  startDemoTeam();   // (team mode's building, with pretend teammates)
   // one scripted incident so the red alarm can be seen: three failing commands in a row
   demoTimers.push(setTimeout(() => { const list = [...sessions.values()]; [0, 1, 2].forEach((k) => setTimeout(() => demoEmit(list[k % list.length], 'fail', tr('demo.incident')), k * 900)); }, 45000));
 }
@@ -207,6 +210,7 @@ export function applyMsg(d, quiet = false) {
       $('btn-bell').hidden = !('Notification' in window) || !window.isSecureContext;
     }
     if (d.schedule) setSchedule(d.schedule);   // (the director's office hours, core/schedule.js)
+    if ('team' in d && !quiet) onTeam(d.team);
     state.connectedOnce = true; queueUi();
   } else if (d.k === 'sess') { upsertSession(d.s, !quiet); if (d.stats) state.stats = d.stats; }
   else if (d.k === 'gone') { if (!quiet) chatLeft(sessions.get(d.id)); (quiet ? dropSessionNow : removeSession)(d.id); }
@@ -229,6 +233,7 @@ export function applyMsg(d, quiet = false) {
   else if (d.k === 'trophies') setTrophies(d.t, quiet ? [] : d.earned || []);
   else if (d.k === 'vi') relabel(d.from, d.to);
   else if (d.k === 'dm' || d.k === 'company' || d.k === 'perf') onDirectorMsg(d);   // (the director's office: ui/director.js)
+  else if (d.k === 'team') { if (!quiet) onTeam(d.team); }   // (team mode: the building, ui/team.js)
 }
 // a translation that arrived after its event: swap the words in bubbles, the feed and the session list
 function relabel(from, to) {
