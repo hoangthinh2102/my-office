@@ -248,7 +248,7 @@ function fillFloor(F) {
   F.screens.instanceColor.needsUpdate = true;
   drawDirectory(F);
   const names = F.rooms.filter((R) => R.room).map((R) => R.room.member.name);
-  F.lab.replaceChildren(el('b', null, tr('team.floor', { n: F.n })), el('span', null, names.join(' · ')));
+  F.lab.replaceChildren(el('b', null, tr('team.floor', { n: F.n })), el('span', null, names.length ? names.join(' · ') : tr('team.lift.emptyFloor')));
   nightShown = null;
 }
 
@@ -274,7 +274,8 @@ function drawDirectory(F) {
 export function syncTower(t) {
   if (!HQ) return;
   const rooms = t?.inTeam ? t.rooms || [] : [];
-  const fl = floorsOf(rooms);
+  // in a team with nobody else in it yet: one floor of empty rooms, so there is a building to look at
+  const theirs = floorsOf(rooms), fl = t?.inTeam && !theirs.length ? [{ n: 1, rooms: [] }] : theirs;
   if (!fl.length) { if (tower) { clearChars(); dispose(tower); scene.remove(tower); tower = null; floors = []; layoutKey = ''; } if (view.mode !== 'mine') goTower('mine'); return; }
   materials();
   const key = fl.map((f) => f.rooms.map((r) => r.member.id).join(',')).join('|') + `#${t.team?.name || ''}`;

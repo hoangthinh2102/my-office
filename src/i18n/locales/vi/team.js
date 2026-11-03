@@ -78,6 +78,7 @@ export default {
     see: 'Xem 3D',
     hint: 'Thang máy bên phải văn phòng đi lên từng tầng.',
     notHq: 'Toà nhà 3D có ở kiểu văn phòng Tập đoàn (Cài đặt → Văn phòng).',
+    emptyFloor: 'Còn trống: mời đồng đội vào (Toà nhà → Mời người vào team)',
   },
   card: { room: 'Phòng của {name}', readOnly: 'Chỉ xem: đây là phòng của người khác.' },
   readOnly: 'Chỉ xem: không ai giao việc được cho phòng khác.',

@@ -79,6 +79,7 @@ export default {
     see: 'See in 3D',
     hint: 'The lift on the right of the office goes up to each floor.',
     notHq: "The 3D building is in the Headquarters office (Settings → Office).",
+    emptyFloor: 'Empty for now: invite your teammates (Building → Invite someone to the team)',
   },
   card: { room: "{name}'s room", readOnly: 'View only: this is someone else’s room.' },
   readOnly: 'View only: nobody can give work to another room.',
