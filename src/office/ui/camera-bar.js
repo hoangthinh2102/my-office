@@ -12,7 +12,7 @@ let VIEWS;
 export function setView(v) { for (const b of document.querySelectorAll('.seg-btn')) b.setAttribute('aria-pressed', String(b.dataset.view === v)); }
 let panBack = null;
 let panTimer = 0;
-export const autoCam = () => state.camAuto && !fp.on && !state.photo && !state.selectedId && performance.now() - state.lastUserCam > 30000;
+export const autoCam = () => state.camAuto && !state.towerView && !fp.on && !state.photo && !state.selectedId && performance.now() - state.lastUserCam > 30000;
 export function panTo(w) {
   if (!panBack) panBack = focusTarget.clone();
   focusTarget.set(w.pos.x, 0.9, w.pos.y);

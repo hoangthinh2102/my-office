@@ -2495,6 +2495,15 @@ const server = http.createServer((req, res) => {
     }).catch(() => json(res, 400, { ok: false, message: tr('server.badRequest') }));
     return;
   }
+  if (req.method === 'POST' && url.pathname === '/api/team/policy') {   // team mode: the team's setting, creator only (the hub checks), from this computer only
+    if (!isLoopback(req) || !sameOriginOf(req) || !String(req.headers['content-type'] || '').startsWith('application/json')) { json(res, 403, { ok: false, message: tr('server.forbidden') }); return; }
+    readJson(req).then(async (b) => {
+      if (typeof b?.details !== 'boolean') { json(res, 400, { ok: false, message: tr('server.badRequest') }); return; }
+      try { team.setPolicy(await teamClient.setPolicy({ details: b.details })); } catch (e) { json(res, 400, { ok: false, code: e.code || 'error' }); return; }
+      json(res, 200, { ok: true, team: team.state() });
+    }).catch(() => json(res, 400, { ok: false, message: tr('server.badRequest') }));
+    return;
+  }
   if (req.method === 'POST' && url.pathname === '/api/todos') {
     const sameOrigin = sameOriginOf(req);
     if (!authorized(req, url) || !sameOrigin || !String(req.headers['content-type'] || '').startsWith('application/json')) { json(res, 403, { ok: false, message: tr('server.forbidden') }); return; }

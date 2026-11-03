@@ -26,9 +26,16 @@ export default async function TeamModal() {
               </div>
             </div>
             <p className="dir-note" id="team-mine-note"></p>
+            <div className="team-policy" id="team-policy">
+              <span className="team-policy-t" id="team-policy-t"></span>
+              <label className="team-switch" id="team-policy-sw" hidden>
+                <input type="checkbox" id="team-policy-in" />
+                <span>{t('team.policy.switch')}</span>
+              </label>
+            </div>
           </section>
           <div className="team-floors" id="team-floors"></div>
-          <p className="dir-note team-foot">{t('team.readOnly')}</p>
+          <p className="dir-note team-foot">{t('team.readOnly')} <span id="team-3d-note"></span></p>
         </div>
       </div>
     </div>
