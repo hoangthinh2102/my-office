@@ -176,3 +176,14 @@
 .team-log-row time { color: var(--faint); font-variant-numeric: tabular-nums; }
 .team-log-none { font-size: .72rem; color: var(--muted); }
 .is-phone .team-redeem input { width: 100%; min-height: 36px; }
+
+/* inviting (the team's creator) in the panel, and joining in Settings → More (ui/team-join.js) */
+.team-invite { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.team-invite .team-access-note { flex: 1 1 220px; }
+.team-invite-link { font: 600 .72rem/1.35 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 5px 8px; border-radius: 8px; background: var(--card-2); word-break: break-all; user-select: all; max-width: 100%; }
+.st-team-join { display: grid; gap: 6px; }
+.st-team-join[hidden], .st-team-in[hidden] { display: none; }
+.st-team-join input { font: inherit; font-size: .8rem; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--side); color: var(--ink); min-width: 0; }
+.st-team-join input:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.st-team-join .tb-btn { width: 100%; justify-content: center; }
+.is-phone .st-team-join input { min-height: 40px; font-size: 16px; }

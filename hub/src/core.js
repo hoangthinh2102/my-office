@@ -126,6 +126,7 @@ export class TeamCore {
 
   async invite(req) {
     const m = await this.member(req), t = this.now();
+    if (!this.isOwner(m.id)) fail(403, 'not-owner');   // (only the team's creator brings people in)
     const open = this.row('SELECT COUNT(*) AS n FROM invites WHERE created_by = ? AND used_at IS NULL AND expires_at > ?', m.id, t).n;
     if (open >= MAX_OPEN_INVITES) fail(429, 'too-many-invites');
     this.sql.exec('DELETE FROM invites WHERE expires_at < ?', t - 24 * 3600_000);   // (expired a day ago: nothing left to show)

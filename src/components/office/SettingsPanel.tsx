@@ -117,6 +117,21 @@ export default async function SettingsPanel() {
             <button id="btn-bell" className="tb-btn" type="button" aria-pressed="false" hidden><span data-icon="bell"></span><span className="lbl">{t('ui.topBar.bell')}</span><i className="badge" id="bell-dot" hidden></i></button>
           </div>
           </div>
+          {/* team mode: join with an invite link, or which team you are in (src/office/ui/team-join.js) */}
+          <div className="st-team" id="st-team">
+            <h3>{t('team.join.title')}</h3>
+            <div className="st-team-in" id="st-team-in" hidden>
+              <p className="pop-note" id="st-team-name-now"></p>
+              <div className="pop-acts"><button type="button" className="tb-btn" id="st-team-open"><span data-icon="building"></span><span className="lbl">{t('team.join.open')}</span></button></div>
+            </div>
+            <form className="st-team-join" id="st-team-join" hidden>
+              <input id="st-team-link" type="text" autoComplete="off" spellCheck={false} placeholder={t('team.join.linkPh')} aria-label={t('team.join.linkPh')} />
+              <input id="st-team-name" type="text" autoComplete="off" maxLength={40} placeholder={t('team.join.namePh')} aria-label={t('team.join.namePh')} />
+              <button type="submit" className="tb-btn" id="st-team-go"><span data-icon="users"></span><span className="lbl">{t('team.join.go')}</span></button>
+              <p className="pop-note">{t('team.join.how')}</p>
+            </form>
+            <p className="pop-note" id="st-team-phone" hidden>{t('team.join.phone')}</p>
+          </div>
           <h3>{t('settings.behaviour')}</h3>
           <div className="pop-toggles">{toggle('sound', true)}{toggle('perm', true)}</div>
           <div className="pop-acts"><button id="btn-tips" className="tb-btn" type="button"><span data-icon="sparkle"></span><span className="lbl">{t('tips.again')}</span></button></div>

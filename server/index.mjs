@@ -2504,6 +2504,20 @@ const server = http.createServer((req, res) => {
     }).catch(() => json(res, 400, { ok: false, message: tr('server.badRequest') }));
     return;
   }
+  // team mode: an invite link (the team's creator; the hub checks), or joining a team with one (this computer only)
+  if (req.method === 'POST' && (url.pathname === '/api/team/invite' || url.pathname === '/api/team/join')) {
+    if (!isLoopback(req) || !sameOriginOf(req) || !String(req.headers['content-type'] || '').startsWith('application/json')) { json(res, 403, { ok: false, message: tr('server.forbidden') }); return; }
+    readJson(req).then(async (b) => {
+      try {
+        if (url.pathname === '/api/team/invite') { const r = await teamClient.invite(); json(res, 200, { ok: true, invite: r.invite, expiresAt: r.expiresAt }); return; }
+        if (typeof b?.link !== 'string' || !b.link.trim()) { json(res, 400, { ok: false, code: 'bad-invite' }); return; }
+        await teamClient.join({ link: b.link.trim(), name: typeof b.name === 'string' ? b.name : '' });
+      } catch (e) { json(res, 400, { ok: false, code: e.code || 'error' }); return; }
+      team.reload();
+      json(res, 200, { ok: true, team: team.state() });
+    }).catch(() => json(res, 400, { ok: false, message: tr('server.badRequest') }));
+    return;
+  }
   // team mode, closed rooms: knock on a door, answer a knock, take a grant back, make or use a view code (this computer only)
   const accessCall = req.method === 'POST' && /^\/api\/team\/(knock|answer|revoke|code|redeem)$/.exec(url.pathname)?.[1];
   if (accessCall) {

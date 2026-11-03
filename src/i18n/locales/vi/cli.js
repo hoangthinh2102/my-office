@@ -59,7 +59,7 @@ export default {
     usage: [
       'Dùng: my-office team <lệnh>',
       '  create --hub <url> --name <tên team> [--me <tên bạn>] [--token <token>]   tạo team (bạn là thành viên đầu tiên)',
-      '  invite                                    link mời một người (dùng một lần, 15 phút)',
+      '  invite                                    link mời một người (dùng một lần, 15 phút; chỉ người tạo team)',
       '  join <link mời> [--me <tên bạn>]          vào team',
       '  status                                    team và các thành viên',
       '  leave [--local]                           rời team (--local: quên team trên máy này kể cả khi hub không chạy)',
@@ -148,7 +148,7 @@ export default {
       'bad-signature': 'Hub từ chối chữ ký. Cập nhật My Office rồi thử lại.',
       replay: 'Hub nhận yêu cầu này hai lần. Thử lại.',
       'bad-mode': 'Phòng chỉ có mở hoặc đóng: my-office team room open|closed',
-      'not-owner': 'Chỉ người tạo team mới đổi được cài đặt của team.',
+      'not-owner': 'Chỉ người tạo team mới làm được việc này (mời người mới, đổi cài đặt của team).',
       'code-unknown': 'Mã xem không tồn tại. Kiểm tra lại, hoặc xin mã mới.',
       'code-used': 'Mã xem đã được dùng. Xin mã mới nhé.',
       'code-expired': 'Mã xem đã hết hạn (10 phút). Xin mã mới nhé.',
