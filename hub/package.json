@@ -1,6 +1,6 @@
 {
   "name": "my-office-hub",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "The relay that lets a team of My Office users see each other's rooms (docs/features/team-mode.md).",
   "license": "MIT",

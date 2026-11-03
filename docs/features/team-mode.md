@@ -184,7 +184,10 @@ này**. Commit đã build lưu ở `.next/office-commit`: không có gì mới t
 **Trang của link mời** (`hub/src/invite-page.js`, `GET /j/<team>.<mã>`):
 - tên team (Worker hỏi Durable Object qua action nội bộ `name`, không nằm trong `ACTIONS` nên bên ngoài không gọi được;
   team không tồn tại thì không ghi gì);
-- không cho biết mã còn dùng được không (chỉ kiểm khi vào team, có giới hạn số lần sai);
+- link **đúng nhưng đã quá 1 giờ** (hub 0.4.1): trang chỉ báo "Link mời đã hết hạn" kèm tên team và bảo xin admin
+  link mới, không có nút mở văn phòng hay lệnh cài, mã HTTP 410. Hub nhớ mã hết hạn thêm 7 ngày (rồi xoá) để báo được;
+- mã sai (chưa từng có) hiện trang bình thường như mã còn hạn, để không dùng trang này dò mã được. Mã còn dùng được hay
+  không vẫn chỉ kiểm thật khi vào team (có giới hạn số lần sai);
 - tiếng Việt hoặc tiếng Anh theo trình duyệt (không có cả hai thì tiếng Việt), đổi bằng `?lang=`;
 - CSP chặn mọi tài nguyên ngoài, không gửi referrer;
 - `SETUP_URL` (biến của Worker) đổi địa chỉ lệnh cài.
@@ -266,7 +269,7 @@ Mọi yêu cầu (trừ `GET /` và `GET /j/…`) phải **có chữ ký** (xem 
 | Method | Path | Ai gọi | Mô tả |
 | --- | --- | --- | --- |
 | GET | `/` | ai cũng được | `{ name: "my-office-hub", version, protocol: 1 }` |
-| GET | `/j/<team>.<mã>` | trình duyệt | Trang chữ hướng dẫn chạy `team join` với link này |
+| GET | `/j/<team>.<mã>` | trình duyệt | Trang chữ hướng dẫn vào team với link này. Link đúng nhưng hết hạn: 410 và trang báo hết hạn |
 | POST | `/teams` | người tạo team | Body `{ team, name }`. Header `x-create-token` nếu hub có đặt `CREATE_TOKEN`. → 201 `{ team: {id, name}, me: {id, name, role: 'admin', owner: true} }` |
 | POST | `/t/<team>/invites` | admin | → 201 `{ invite, code, expiresAt }` (1 giờ, dùng được nhiều lần; tối đa 10 link còn hạn mỗi người). Người khác: 403 `not-owner` |
 | POST | `/t/<team>/join` | người mới | Body `{ code, name }` → 201 `{ team, me }`. 410 `invite-expired` khi link quá 1 giờ |
@@ -414,7 +417,7 @@ hết giờ: alarm của Durable Object ─▶ xoá grant, báo A và B ─▶ r
 | `meta` | `k`, `v` | `team_id`, `name`, `root_key` (khoá của người tạo team: team tạo trước 0.4.0 thì người này thành admin đầu tiên khi hub thức dậy), `created_at`, `policy_details` |
 | `members` | `id`, `name`, `role`, `joined_at`, `left_at` | `role`: `admin` hoặc `member`. Vào lại team thì luôn là `member` |
 | `devices` | `key`, `member_id`, `added_at`, `revoked_at` | |
-| `invites` | `hash`, `created_by`, `created_at`, `expires_at`, `used_by`, `used_at` | Chỉ lưu `sha256` của mã. `used_by` / `used_at`: người vào gần nhất (link dùng được nhiều lần). Mã hết hạn quá 1 ngày thì bị xoá. |
+| `invites` | `hash`, `created_by`, `created_at`, `expires_at`, `used_by`, `used_at` | Chỉ lưu `sha256` của mã. `used_by` / `used_at`: người vào gần nhất (link dùng được nhiều lần). Mã hết hạn quá 7 ngày thì bị xoá (trước 0.4.1: 1 ngày). |
 | `grants` | `room`, `viewer`, `created_at`, `expires_at` | Bước 4: ai được xem phòng nào. `expires_at` null là luôn. Xoá khi hết hạn, bị thu hồi, hoặc một trong hai người rời team |
 | `knocks` | `room`, `viewer`, `at` | Lượt gõ cửa đang chờ, sống 10 phút |
 | `view_codes` | `hash`, `room`, `created_at`, `expires_at`, `used_by`, `used_at` | Chỉ lưu `sha256` của mã. Hết hạn quá 1 ngày thì xoá |
@@ -449,7 +452,7 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
   - ký và kiểm chữ ký; sửa body, path hoặc method thì chữ ký hỏng;
   - lệch giờ, thiếu chữ ký;
   - link mời, khoá khôi phục, làm sạch tên;
-  - luật của hub trên SQLite của Node: tạo team, mời, vào, rời, vào lại; link dùng được cho nhiều người trong 1 giờ, hết giờ thì `invite-expired`; tạm khoá
+  - luật của hub trên SQLite của Node: tạo team, mời, vào, rời, vào lại; link dùng được cho nhiều người trong 1 giờ, hết giờ thì `invite-expired`; trang mời báo hết hạn với mã đúng đã quá giờ (nhớ 7 ngày), mã sai trông như mã còn hạn; tạm khoá
     vào team sau 20 mã sai; tối đa 10 mã mời; gửi lại yêu cầu cũ; người ngoài; team không tồn tại thì không ghi gì.
   - Phần luật của hub cần `node:sqlite` (Node 22.13 trở lên), nên tự bỏ qua trên Node 20.
 - `tests/unit/team-relay.test.mjs` (bước 2): phòng đóng chỉ có số đếm; phòng mở không lộ prompt, tiêu đề, thư mục, pid,
@@ -479,7 +482,7 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
   `roomView` / `cleanRoom` với `share`. Thêm vào `team-relay.test.mjs`: relay chỉ gửi người khi có người được xem, hết giờ
   thì thôi; giữ lượt gõ cửa và câu trả lời cho trang. `team-floors.test.mjs`: trạng thái `shared`.
 - `tests/unit/team-onboarding.test.mjs`: trang link mời (tên team được escape, nút mở văn phòng, lệnh cài kèm link và
-  ngôn ngữ), chọn ngôn ngữ, `?join=` chỉ nhận link mời, tên team cho trang và team không tồn tại thì không ghi gì.
+  ngôn ngữ; link hết hạn chỉ còn lời báo, không nút, không lệnh), chọn ngôn ngữ, `?join=` chỉ nhận link mời, tên team cho trang và team không tồn tại thì không ghi gì.
   `team-relay.test.mjs`: không đọc được khoá (Keychain đang khoá) thì thử lại, không bỏ cuộc.
 - Cài một dòng đã chạy tay: `setup.sh` từ một repo nguồn tạm vào thư mục tạm (cổng 4421, file settings riêng, không
   đụng service thật): kiểm máy, clone, `npm ci`, gắn hook, vào team, tiếng Việt. `update`: lấy commit mới, in danh

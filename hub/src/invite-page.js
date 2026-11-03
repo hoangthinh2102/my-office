@@ -1,6 +1,7 @@
 // The page an invite link opens in a browser (GET /j/<team>.<code>): which team, and the two ways in: open My Office
 // with the link filled in (http://localhost:4310/?join=…), or install it with one line that joins on the way.
-// It says nothing about whether the code is still good: that is only checked when someone joins (rate limited).
+// A link whose code was good but has run out says so, with no way in. Any other code gets the normal page: whether it
+// is right is only checked when someone joins (rate limited), so the page can't be used to try codes.
 const SETUP_URL = 'https://raw.githubusercontent.com/hoangthinh2102/my-office/main/setup.sh';
 
 const WORDS = {
@@ -15,6 +16,7 @@ const WORDS = {
     copy: 'Chép lệnh', copied: 'Đã chép',
     after: 'Xong thì mở một phiên Claude Code mới để nhân viên bắt đầu vào văn phòng.',
     cliT: 'Dùng lệnh trong thư mục my-office', what: 'My Office là văn phòng 3D chạy trên máy bạn: mỗi phiên Claude Code là một nhân viên. Code và prompt không rời khỏi máy.',
+    expiredT: 'Link mời đã hết hạn', expiredTeam: 'Link vào team', gone: 'không còn dùng được.', expiredB: 'Link chỉ dùng được 1 giờ kể từ lúc được tạo. Xin admin trong team một link mới.',
   },
   en: {
     lang: 'en', title: 'Team invite', invited: "You're invited to the team", noName: 'a My Office team',
@@ -27,6 +29,7 @@ const WORDS = {
     copy: 'Copy', copied: 'Copied',
     after: 'Then open a new Claude Code session so it starts reporting to the office.',
     cliT: 'With a command, in the my-office folder', what: 'My Office is a 3D office that runs on your computer: each Claude Code session is someone at a desk. Code and prompts never leave your computer.',
+    expiredT: 'This invite link has expired', expiredTeam: 'The link to the team', gone: 'no longer works.', expiredB: 'A link only works for an hour after it was made. Ask an admin of the team for a new one.',
   },
 };
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -38,14 +41,15 @@ export function pickLang(accept, asked) {
   return en >= 0 && (vi < 0 || en < vi) ? 'en' : 'vi';
 }
 
-/** The invite page's HTML. link: the invite as given; team: the team's name, or null. */
-export function invitePage({ link, team, accept, asked, setupUrl = SETUP_URL }) {
+/** The invite page's HTML. link: the invite as given; team: the team's name, or null; expired: the code was good but
+ *  has run out (then the page only says so). */
+export function invitePage({ link, team, expired = false, accept, asked, setupUrl = SETUP_URL }) {
   const w = WORDS[pickLang(accept, asked)], other = w.lang === 'vi' ? ['en', 'English'] : ['vi', 'Tiếng Việt'];
   const join = `http://localhost:4310/?join=${encodeURIComponent(link)}`;
   const cmd = `curl -fsSL ${setupUrl} | bash -s -- --lang ${w.lang} --join '${link}'`;
   return `<!doctype html>
 <html lang="${w.lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex"><title>${esc(w.title)}${team ? ` · ${esc(team)}` : ''}</title>
+<meta name="robots" content="noindex"><title>${esc(expired ? w.expiredT : w.title)}${team ? ` · ${esc(team)}` : ''}</title>
 <style>
 :root{--bg:#F6F3EE;--card:#fff;--ink:#1D2129;--muted:#5F6672;--line:#E4DED4;--accent:#D9693D;--code:#F1ECE4}
 @media (prefers-color-scheme:dark){:root{--bg:#12161D;--card:#1A2029;--ink:#EEF0F3;--muted:#9AA3B0;--line:#2A323E;--accent:#EF8A5F;--code:#232B36}}
@@ -62,7 +66,10 @@ button{border:1px solid var(--line);background:var(--card);color:var(--ink);bord
 details{margin-top:16px}summary{cursor:pointer;color:var(--muted);font-size:14px}
 </style></head><body><main>
 <div class="k">My Office <a href="?lang=${other[0]}" style="float:right;font-weight:600;letter-spacing:0;text-transform:none;color:var(--muted)">${other[1]}</a></div>
-<h1>${esc(w.invited)} ${team ? `“${esc(team)}”` : esc(w.noName)}</h1>
+${expired ? `<h1>${esc(w.expiredT)}</h1>
+${team ? `<p>${esc(w.expiredTeam)} “${esc(team)}” ${esc(w.gone)}</p>
+` : ''}<p class="m">${esc(w.expiredB)}</p>
+</main></body></html>` : `<h1>${esc(w.invited)} ${team ? `“${esc(team)}”` : esc(w.noName)}</h1>
 <p class="m">${esc(w.what)}</p>
 <p class="m">${esc(w.once)} ${esc(w.computer)}</p>
 <section><h2>${esc(w.haveT)}</h2><p class="m">${esc(w.haveB)}</p><a class="b" href="${esc(join)}">${esc(w.open)}</a></section>
@@ -72,5 +79,5 @@ details{margin-top:16px}summary{cursor:pointer;color:var(--muted);font-size:14px
 <details><summary>${esc(w.cliT)}</summary><div class="c"><code>node bin/cli.mjs team join ${esc(link)}</code></div></details>
 </main><script>
 document.getElementById('cp').addEventListener('click',function(){var b=this;navigator.clipboard.writeText(document.getElementById('cmd').textContent).then(function(){b.textContent=${JSON.stringify(w.copied)};setTimeout(function(){b.textContent=${JSON.stringify(w.copy)}},1600)})});
-</script></body></html>`;
+</script></body></html>`}`;
 }
