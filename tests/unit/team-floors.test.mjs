@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BREAK_SEATS, FLOOR_THEMES, ROOMS_PER_FLOOR, floorsOf, headcount, latest, seatPeople, stateOf, themeOf } from '../../src/shared/team-floors.js';
+import { BREAK_SEATS, FLOOR_THEMES, MIN_FLOORS, ROOMS_PER_FLOOR, floorsOf, padFloors, headcount, latest, seatPeople, stateOf, themeOf } from '../../src/shared/team-floors.js';
 
 const room = (i, over = {}) => ({ member: { id: `m${i}`, name: `Member ${i}` }, online: true, mode: 'closed', ...over });
 
@@ -62,4 +62,16 @@ test('the break corner seats whoever rests, keeping their seat, never more than 
   const b = seatPeople(rest(['p2', 'p3']), a.seats, BREAK_SEATS);
   assert.deepEqual([...b.seats], [['p2', 1], ['p3', 0]]);
   assert.equal(b.extra, 0);
+});
+
+test('the building always has at least five floors, free ones on top', () => {
+  assert.equal(MIN_FLOORS, 5);
+  // nobody else yet: five floors of free rooms
+  assert.deepEqual(padFloors([]).map((f) => [f.n, f.rooms.length]), [[1, 0], [2, 0], [3, 0], [4, 0], [5, 0]]);
+  assert.equal(padFloors(null).length, 5);
+  // six people: floors 1 and 2 have them, 3 to 5 are free
+  const six = padFloors(floorsOf(Array.from({ length: 6 }, (_, i) => room(i))));
+  assert.deepEqual(six.map((f) => f.rooms.length), [4, 2, 0, 0, 0]);
+  // a bigger team gets as many floors as it needs
+  assert.equal(padFloors(floorsOf(Array.from({ length: 25 }, (_, i) => room(i)))).length, 7);
 });
