@@ -1,7 +1,7 @@
 // The team hub, as a Cloudflare Worker: one Durable Object per team (team.js) holds that team's records in SQLite.
 //
 //   POST /teams              create a team (signed by the creator's key; CREATE_TOKEN, if set, is required too)
-//   POST /t/<team>/invites   a one-time invite link (admins only)
+//   POST /t/<team>/invites   an invite link: anyone with it can join for an hour (admins only)
 //   POST /t/<team>/join      join with an invite code (signed by the newcomer's key)
 //   GET  /t/<team>/me        the team, who you are, the members
 //   POST /t/<team>/leave     leave the team (not the last admin while others remain)

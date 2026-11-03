@@ -10,8 +10,8 @@ Hướng dẫn đầy đủ: [team-guide.md](team-guide.md).
 - [ ] Hub đã lên bản mới nhất: mở `https://<hub>/` thấy `version` mới nhất (đang là `0.4.0`).
 - [ ] Văn phòng của bạn đang chạy và đã ở team: nút **Toà nhà** có trên thanh trên cùng.
 - [ ] Cho thêm một người làm admin (**Toà nhà → Thành viên → Cho làm admin**), để còn người mời được nếu bạn vắng.
-- [ ] Mỗi người một link: **Toà nhà → Mời người vào team** → **Chép**, gửi riêng qua Lark. Link sống 15 phút, nên gửi
-      khi người đó sẵn sàng.
+- [ ] Một link cho cả nhóm: **Toà nhà → Mời người vào team** → **Chép**, gửi vào nhóm Lark của buổi thử. Link dùng
+      được 1 giờ, nên gửi khi mọi người sẵn sàng (hết giờ thì tạo link mới).
 
 ## Mỗi người thử (khoảng 15 phút)
 

@@ -18,8 +18,8 @@ team** đưa văn phòng của cả team vào chung một toà nhà:
 
 ## 1. Vào team: mở link mời
 
-Người tạo team gửi bạn **một link mời** (qua Lark). Link có dạng `https://…/j/…`, **chỉ dùng được một lần, trong 15
-phút**. Hết hạn thì xin link mới.
+Admin của team gửi **link mời** (qua Lark). Link có dạng `https://…/j/…`, **dùng được trong 1 giờ**, cả nhóm dùng chung
+một link. Hết hạn thì xin link mới.
 
 Mở link đó bằng trình duyệt **trên máy tính bạn dùng Claude Code**. Trang hiện tên team và hai lựa chọn:
 
@@ -157,8 +157,8 @@ Hoặc chạy lệnh:
 node bin/cli.mjs team invite
 ```
 
-Gửi link cho đúng một người, qua kênh riêng (tin nhắn trực tiếp). Mỗi link chỉ dùng được cho một người, hết hạn sau 15
-phút. Cần thêm thì tạo link mới.
+Một link dùng được cho cả nhóm, trong 1 giờ: ai có link cũng vào được team, nên **chỉ gửi trong nhóm chat của team**
+(không đăng chỗ công khai). Lỡ có người lạ vào thì xoá họ ở **Toà nhà → Thành viên**. Hết giờ thì tạo link mới.
 
 ## 5. Admin và thành viên
 

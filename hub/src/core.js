@@ -137,7 +137,7 @@ export class TeamCore {
   async invite(req) {
     const m = await this.member(req), t = this.now();
     if (!this.isAdmin(m.id)) fail(403, 'not-owner');   // (only admins bring people in; the code predates admins)
-    const open = this.row('SELECT COUNT(*) AS n FROM invites WHERE created_by = ? AND used_at IS NULL AND expires_at > ?', m.id, t).n;
+    const open = this.row('SELECT COUNT(*) AS n FROM invites WHERE created_by = ? AND expires_at > ?', m.id, t).n;
     if (open >= MAX_OPEN_INVITES) fail(429, 'too-many-invites');
     this.sql.exec('DELETE FROM invites WHERE expires_at < ?', t - 24 * 3600_000);   // (expired a day ago: nothing left to show)
     const teamId = this.meta('team_id'), code = makeInviteCode(), expiresAt = t + INVITE_TTL_MS;
@@ -154,7 +154,8 @@ export class TeamCore {
     const v = await this.signed(req), b = this.body(req), name = cleanName(b.name);
     if (!name || !isInviteCode(b.code)) fail(400, 'bad-request');
     const inv = this.row('SELECT * FROM invites WHERE hash = ?', await hashCode(this.meta('team_id'), b.code));
-    const bad = !inv ? 'invite-unknown' : inv.used_at ? 'invite-used' : inv.expires_at < t ? 'invite-expired' : null;
+    // a link works for everyone who has it until it runs out (an hour); used_by / used_at keep the last one in
+    const bad = !inv ? 'invite-unknown' : inv.expires_at < t ? 'invite-expired' : null;
     if (bad) { this.log(null, 'join-failed', bad); fail(bad === 'invite-unknown' ? 404 : 410, bad); }
     const dev = this.row('SELECT d.member_id, d.revoked_at, m.left_at FROM devices d JOIN members m ON m.id = d.member_id WHERE d.key = ?', v.key);
     if (dev && !dev.revoked_at && !dev.left_at) fail(409, 'already-member');

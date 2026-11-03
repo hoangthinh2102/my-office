@@ -81,7 +81,7 @@ export function createTeamClient({ dataDir, fetch = globalThis.fetch }) {
       return { state, recovery: makeRecovery({ hub: state.hub, teamId: state.teamId, ...keys }) };
     },
 
-    /** A one-time invite link: { invite, code, expiresAt }. */
+    /** An invite link, good for anyone who has it for an hour: { invite, code, expiresAt }. */
     async invite() {
       const { s, keys } = await current();
       return call(s.hub, keys, 'POST', `/t/${s.teamId}/invites`, {});

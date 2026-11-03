@@ -6,7 +6,7 @@ const SETUP_URL = 'https://raw.githubusercontent.com/hoangthinh2102/my-office/ma
 const WORDS = {
   vi: {
     lang: 'vi', title: 'Lời mời vào team', invited: 'Bạn được mời vào team', noName: 'một team My Office',
-    once: 'Link này dùng được một lần, trong 15 phút kể từ lúc được tạo. Hết hạn thì xin người mời link mới.',
+    once: 'Link dùng được trong 1 giờ kể từ lúc được tạo. Hết hạn thì xin admin link mới.',
     computer: 'Làm trên máy tính bạn dùng Claude Code (không phải điện thoại).',
     haveT: 'Đã cài My Office trên máy này', haveB: 'Văn phòng mở ra với link điền sẵn: gõ tên của bạn rồi bấm Vào team.',
     open: 'Mở My Office để vào team',
@@ -18,7 +18,7 @@ const WORDS = {
   },
   en: {
     lang: 'en', title: 'Team invite', invited: "You're invited to the team", noName: 'a My Office team',
-    once: 'This link works once, for 15 minutes after it was made. If it has run out, ask for a new one.',
+    once: 'This link works for an hour after it was made. If it has run out, ask an admin for a new one.',
     computer: 'Do this on the computer you use Claude Code on (not a phone).',
     haveT: 'My Office is already on this computer', haveB: 'The office opens with the link filled in: type your name and press Join the team.',
     open: 'Open My Office to join',

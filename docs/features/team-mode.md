@@ -41,7 +41,9 @@ Chuẩn bị chạy thử (hub **0.3.2**): **chỉ cần gửi link mời**.
 - Lệnh `node bin/cli.mjs setup` làm cả lần cài đầu; `node bin/cli.mjs update` lên bản mới.
 - Checklist buổi thử: [docs/team-trial.md](../team-trial.md).
 
-Bước 6, **admin** (hub **0.4.0**):
+Bước 6, **admin** (hub **0.4.0**). Cùng bản này, **link mời dùng chung**: một link cho cả nhóm, ai có link cũng vào
+được, trong **1 giờ** (trước đây: một người, 15 phút). Sai mã 20 lần trong 10 phút vẫn tạm khoá việc vào team.
+
 - người tạo team là admin đầu tiên. Admin mời người, cho người khác làm admin, xoá thành viên, đổi cài đặt team;
 - không ai xoá được admin khác: chỉ chính admin đó tự thôi được. Admin cuối cùng không thôi được, và không rời team được
   khi team còn người khác (để luôn còn người mời được);
@@ -58,7 +60,7 @@ Lộ trình ở cuối file.
 | Lệnh | Việc |
 | --- | --- |
 | `team create --hub <url> --name <tên team> [--me <tên>] [--token <token>]` | Tạo team, máy này là thành viên đầu tiên. In **khoá khôi phục** một lần duy nhất. |
-| `team invite` | Link mời dùng một lần, hết hạn sau 15 phút. **Chỉ admin**. |
+| `team invite` | Link mời: ai có link cũng vào được, trong 1 giờ. **Chỉ admin**. |
 | `team join <link mời> [--me <tên>]` | Vào team. |
 | `team status` | Team, tên của bạn, chế độ phòng, danh sách thành viên. |
 | `team leave [--local]` | Rời team trên hub rồi xoá khoá khỏi máy. `--local`: xoá trên máy kể cả khi không kết nối được hub. |
@@ -187,7 +189,7 @@ Code: `src/office/ui/team-join.js` (markup trong `TeamModal.tsx` và `SettingsPa
 | Method | Path | Body | Trả về |
 | --- | --- | --- | --- |
 | `POST` | `/api/team/invite` | `{}` | `{ ok, invite, expiresAt }` · `{ ok: false, code: 'not-owner' }` |
-| `POST` | `/api/team/join` | `{ link, name? }` | `{ ok, team }` · `{ ok: false, code }` (vd. `bad-invite`, `invite-used`, `already-in-team`) |
+| `POST` | `/api/team/join` | `{ link, name? }` | `{ ok, team }` · `{ ok: false, code }` (vd. `bad-invite`, `invite-expired`, `already-in-team`) |
 
 Cùng điều kiện như `/api/team/room`: loopback, không qua tunnel, cùng origin, JSON.
 
@@ -249,8 +251,8 @@ Mọi yêu cầu (trừ `GET /` và `GET /j/…`) phải **có chữ ký** (xem 
 | GET | `/` | ai cũng được | `{ name: "my-office-hub", version, protocol: 1 }` |
 | GET | `/j/<team>.<mã>` | trình duyệt | Trang chữ hướng dẫn chạy `team join` với link này |
 | POST | `/teams` | người tạo team | Body `{ team, name }`. Header `x-create-token` nếu hub có đặt `CREATE_TOKEN`. → 201 `{ team: {id, name}, me: {id, name, role: 'admin', owner: true} }` |
-| POST | `/t/<team>/invites` | admin | → 201 `{ invite, code, expiresAt }`. Người khác: 403 `not-owner` |
-| POST | `/t/<team>/join` | người mới | Body `{ code, name }` → 201 `{ team, me }` |
+| POST | `/t/<team>/invites` | admin | → 201 `{ invite, code, expiresAt }` (1 giờ, dùng được nhiều lần; tối đa 10 link còn hạn mỗi người). Người khác: 403 `not-owner` |
+| POST | `/t/<team>/join` | người mới | Body `{ code, name }` → 201 `{ team, me }`. 410 `invite-expired` khi link quá 1 giờ |
 | GET | `/t/<team>/me` | thành viên | → 200 `{ team, me, members: [{ id, name, role, joinedAt }] }` |
 | POST | `/t/<team>/leave` | thành viên | → 200 `{ ok: true }`. Socket của người đó bị đóng (mã 4001), mọi người nhận `{ t: 'gone' }` và `{ t: 'members' }`. Admin cuối cùng khi team còn người khác: 409 `last-admin` |
 | POST | `/t/<team>/promote` | admin | Body `{ member }` → 200 `{ members, me }`. 409 `already-admin`, 404 `no-member` |
@@ -395,7 +397,7 @@ hết giờ: alarm của Durable Object ─▶ xoá grant, báo A và B ─▶ r
 | `meta` | `k`, `v` | `team_id`, `name`, `root_key` (khoá của người tạo team: team tạo trước 0.4.0 thì người này thành admin đầu tiên khi hub thức dậy), `created_at`, `policy_details` |
 | `members` | `id`, `name`, `role`, `joined_at`, `left_at` | `role`: `admin` hoặc `member`. Vào lại team thì luôn là `member` |
 | `devices` | `key`, `member_id`, `added_at`, `revoked_at` | |
-| `invites` | `hash`, `created_by`, `created_at`, `expires_at`, `used_by`, `used_at` | Chỉ lưu `sha256` của mã. Mã hết hạn quá 1 ngày thì bị xoá. |
+| `invites` | `hash`, `created_by`, `created_at`, `expires_at`, `used_by`, `used_at` | Chỉ lưu `sha256` của mã. `used_by` / `used_at`: người vào gần nhất (link dùng được nhiều lần). Mã hết hạn quá 1 ngày thì bị xoá. |
 | `grants` | `room`, `viewer`, `created_at`, `expires_at` | Bước 4: ai được xem phòng nào. `expires_at` null là luôn. Xoá khi hết hạn, bị thu hồi, hoặc một trong hai người rời team |
 | `knocks` | `room`, `viewer`, `at` | Lượt gõ cửa đang chờ, sống 10 phút |
 | `view_codes` | `hash`, `room`, `created_at`, `expires_at`, `used_by`, `used_at` | Chỉ lưu `sha256` của mã. Hết hạn quá 1 ngày thì xoá |
@@ -430,7 +432,7 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
   - ký và kiểm chữ ký; sửa body, path hoặc method thì chữ ký hỏng;
   - lệch giờ, thiếu chữ ký;
   - link mời, khoá khôi phục, làm sạch tên;
-  - luật của hub trên SQLite của Node: tạo team, mời, vào, rời, vào lại; mã dùng một lần, hết hạn 15 phút; tạm khoá
+  - luật của hub trên SQLite của Node: tạo team, mời, vào, rời, vào lại; link dùng được cho nhiều người trong 1 giờ, hết giờ thì `invite-expired`; tạm khoá
     vào team sau 20 mã sai; tối đa 10 mã mời; gửi lại yêu cầu cũ; người ngoài; team không tồn tại thì không ghi gì.
   - Phần luật của hub cần `node:sqlite` (Node 22.13 trở lên), nên tự bỏ qua trên Node 20.
 - `tests/unit/team-relay.test.mjs` (bước 2): phòng đóng chỉ có số đếm; phòng mở không lộ prompt, tiêu đề, thư mục, pid,
@@ -491,6 +493,8 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
 
 ## Giới hạn & rủi ro
 
+- **Link mời dùng chung**: ai có link trong giờ đó đều vào được team. Chỉ gửi trong nhóm chat của team; người lạ lỡ vào
+  thì admin xoá ở **Toà nhà → Thành viên**. Chưa có nút thu hồi link sớm: link tự hết sau 1 giờ.
 - **Admin cuối cùng mất máy và mất khoá khôi phục** thì team không mời thêm được ai. Nên có ít nhất hai admin. Phòng
   mặc định đóng nên người vào nhầm chỉ thấy các phòng đang mở.
 - Không ai xoá được admin khác, kể cả khi admin đó không còn dùng: đây là luật đã chọn. Cho ai làm admin thì nghĩ kỹ.
