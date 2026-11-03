@@ -213,3 +213,23 @@ test('relay: a closed room sends its people only while someone is let in, and ke
     assert.deepEqual([relay.state().asks, relay.state().answers.map((a) => [a.room, a.state])], [[], [['m3', 'denied']]]);
   } finally { relay.stop(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
+
+test('relay: a key it can\'t read right now (locked keychain) is tried again, not given up on', async () => {
+  process.env.OFFICE_TEAM_KEYSTORE = 'file';
+  const { createRelay } = await import('../../server/team/relay.mjs');
+  const { saveKeys } = await import('../../server/team/identity.mjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mo-relay-')), keys = await generateKeys();
+  fs.writeFileSync(path.join(dir, 'team.json'), JSON.stringify({ hub: 'https://hub.test', teamId: randomId(16), teamName: 'T', memberId: 'm1', name: 'An', publicKey: keys.publicKey, keyStore: 'file', room: { mode: 'closed' } }));
+  const sockets = [];
+  class FakeWS { constructor(url) { this.url = url; sockets.push(this); } addEventListener() {} send() {} close() {} }
+  const relay = createRelay({ dataDir: dir, sessions: () => [], WebSocket: FakeWS });
+  relay.start();
+  try {
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(relay.state().problem, 'no-key');
+    assert.equal(sockets.length, 0);
+    await saveKeys(dir, keys);   // (the key can be read again)
+    await new Promise((r) => setTimeout(r, 2300));   // (first retry after 2 s)
+    assert.equal(sockets.length, 1);
+  } finally { relay.stop(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
