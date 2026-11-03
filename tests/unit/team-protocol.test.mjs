@@ -92,6 +92,8 @@ test('hub: create a team, invite, join, list, leave', { skip: !DatabaseSync && '
   const me = await send(b, 'GET', 'me');
   assert.deepEqual(me.body.members.map((m) => m.name), ['An', 'Bình']);
   assert.equal(me.body.me.name, 'Bình');
+  const notOwner = await send(b, 'POST', 'invites', {});   // only the team's creator brings people in
+  assert.deepEqual([notOwner.status, notOwner.body.error], [403, 'not-owner']);
 
   assert.equal((await send(b, 'POST', 'leave', {})).status, 200);
   assert.equal((await send(b, 'GET', 'me')).body.error, 'not-member');
