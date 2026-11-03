@@ -115,6 +115,8 @@ Chỉ ở kiểu văn phòng **Tập đoàn** (`hq`); các kiểu khác chỉ c�
   - *Tầng n*: các tầng phía trên được nhấc đi, nhìn từ trên xuống. Phòng mở: mỗi người một nhân vật ngồi tại bàn (gõ
     phím khi đang làm, giơ tay khi chờ duyệt, cầm cốc khi nghỉ); màn hình bàn đổi màu theo trạng thái. Phòng đóng: kính
     mờ (smart glass) và nắp kính mờ, chỉ thấy bóng người, đúng bằng số người. Offline: tắt đèn, ghế trống.
+- **Luôn ít nhất 5 tầng** (`MIN_FLOORS`, `padFloors`): vào team rồi thì dù chưa có ai, toà nhà đã đủ 5 tầng phòng
+  trống (nhãn tầng: "Còn trống"); người vào lấp dần từ tầng 1, đông hơn 20 người thì thêm tầng.
 - **Một tầng** dùng đúng mặt bằng của cánh phòng ban (`DEPTS`): 4 phòng, mỗi phòng 2 cụm bàn = 8 chỗ; hành lang A, B;
   bảng chỉ dẫn tầng cạnh thang máy; thang máy kính chạy tới tầng đang xem. Tầng 1 bắt đầu ở `TOWER_Y0 = 4.5` m, mỗi tầng
   cao `FLOOR_H = 3.4` m (`src/shared/team-floors.js`).
@@ -133,7 +135,8 @@ Chỉ ở kiểu văn phòng **Tập đoàn** (`hq`); các kiểu khác chỉ c�
   phê, làm lại thì đi về bàn. Ai đã có chỗ thì giữ chỗ (`seatPeople`); mở tầng khi họ đang nghỉ thì thấy họ ở góc nghỉ luôn.
 - **Bấm được, chỉ trên màn hình của bạn**: trỏ vào đồ thì có viền sáng và tên (như tầng của bạn); bấm thì cây rung,
   đèn bật / tắt, máy cà phê bốc hơi, cá bơi nhanh khi cho ăn, sofa / bảng / tủ nảy nhẹ. Không gửi gì lên hub, không
-  đổi gì ở phòng người khác. Bấm vào chỗ trống trên tầng không chạm vào văn phòng của bạn bên dưới.
+  đổi gì ở phòng người khác. **Bàn làm việc**: trỏ vào thì biết ai ngồi đó và đang làm gì (phòng đóng: không nói);
+  bấm vào bàn có người thì mở thẻ người đó (chỉ xem), bàn trống thì nảy nhẹ. Bấm vào chỗ trống trên tầng không chạm vào văn phòng của bạn bên dưới.
 - **Nhẹ máy**: các tầng khác (và cả toà nhà nhìn từ ngoài) vẫn là bản đơn giản: tường, bàn, ghế, người, bóng người…
   mỗi loại một lần vẽ cho cả tầng (instancing). Đồ đầy đủ chỉ dựng cho tầng đang xem, gộp thành vài chục lần vẽ
   (`src/office/scene/merge.js`), không đổ bóng; rời tầng thì dọn hết. Nhân vật đầy đủ chỉ có ở tầng đang xem (tối đa

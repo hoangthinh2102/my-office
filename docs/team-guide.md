@@ -86,7 +86,8 @@ Muốn xem thử trước khi vào team: mở `http://localhost:4310/?demo`, r�
 
 **Toà nhà 3D**: chọn kiểu văn phòng **Tập đoàn** (Cài đặt → Văn phòng). Bên phải văn phòng có thang máy:
 
-- nút trên cùng: **Toàn nhà**, nhìn cả toà nhà từ ngoài, phòng có người thì sáng đèn;
+- nút trên cùng: **Toàn nhà**, nhìn cả toà nhà từ ngoài (luôn ít nhất 5 tầng, tầng chưa có ai ghi "Còn trống"), phòng
+  có người thì sáng đèn;
 - các số: vào **từng tầng**. Phòng mở thấy từng nhân viên ngồi làm, ai nghỉ thì ra góc nghỉ của phòng; phòng đóng là
   kính mờ, chỉ thấy bóng người; bấm vào một người để xem người đó đang làm gì (chỉ xem). Mỗi tầng một kiểu (Studio,
   Khu vườn, Thư viện); cây, đèn, máy cà phê, bể cá… bấm được, chỉ vui trên màn hình của bạn;

@@ -166,7 +166,7 @@ export function furnishFloor(F, n, theme, desks, accents) {
   const g = new THREE.Group(); g.name = `team-floor-${n}-furniture`; F.g.add(g);
   const D = { g, n, theme, props: [], rooms: [], lamps: [], fx: { bounces: [], wiggles: [], coffee: null, fish: null, feedUntil: 0, brewUntil: 0 } };
   const propList = [];   // [id, group, kind, act]: registered once everything is built and merged
-  const prop = (kind, grp, act) => { propList.push([`${kind}${propList.length}`, grp, kind, act]); return grp; };
+  const prop = (kind, grp, act, extra) => { propList.push([`${kind}${propList.length}`, grp, kind, act, extra]); return grp; };
   const plant = (x, z, s, k, parent = g) => prop('plant', potPlant(x, z, s, k, 0, parent), 'wiggle');
 
   /* the rooms */
@@ -182,6 +182,7 @@ export function furnishFloor(F, n, theme, desks, accents) {
       officeChair(dg, 0, -0.66, mat(CHAIR_IDLE, { roughness: 0.9 }));
       trinket(prPick(TRINKETS), 0.5, 0.8, -0.22, rand(-0.4, 0.4), dg);
       R.screens.push(scr);
+      prop('desk', dg, 'bounce', { seat: { i, k } });   // (pointing says who sits there; a click opens their card: ui/team-lift.js)
     });
     for (const b of R.bulbs) live(b);
     // the door plaque, on the side of the glass the camera sees (as on the wing)
@@ -256,12 +257,16 @@ export function furnishFloor(F, n, theme, desks, accents) {
   const keep = (m) => { if (m.material?.userData.live) return true; for (let q = m; q && q !== g; q = q.parent) if (q.userData.live || q.userData.noMerge) return true; return false; };
   const meshesOf = (o) => { const out = []; o.traverse((m) => { if (m.isMesh) out.push(m); }); return out; };
   const inProp = new Set();
-  for (const [id, grp, kind, act] of propList) {
+  for (const [id, grp, kind, act, extra] of propList) {
     const before = meshesOf(grp), boxes = before.map((m) => new THREE.Box3().setFromObject(m)), box = new THREE.Box3();
     for (const b of boxes) box.union(b);
     mergeMeshes(before, grp, keep);
     const p = { id, kind, group: grp, name: tr(`team.tower.props.${kind}.name`), hint: `${tr(`team.tower.props.${kind}.hint`)} · ${tr('team.tower.local')}`, meshes: meshesOf(grp), box, boxes };
     p.act = act === 'wiggle' ? () => wiggle(D, grp) : act === 'bounce' ? () => bounce(D, grp) : act;
+    if (extra?.seat) {
+      const { i, k } = extra.seat; p.seat = extra.seat; p.name = tr('team.tower.props.desk.name', { n: i * 8 + k + 1 });
+      Object.defineProperty(p, 'hint', { get: () => deskHint(D.rooms[i].view, k) });
+    }
     D.props.push(p); inProp.add(grp);
   }
   const rest = [];
@@ -278,6 +283,16 @@ export function furnishFloor(F, n, theme, desks, accents) {
 }
 
 /* ---------- what it does ---------- */
+// what pointing at a desk says: who sits there and what they are doing, or why you can't see
+function deskHint(v, k) {
+  if (!v?.name) return tr('team.tower.free');
+  if (v.st === 'offline') return tr('team.offline');
+  if (v.st === 'closed') return tr('team.tower.props.desk.closed');
+  const p = v.bySeat.get(k);
+  if (!p) return tr('team.tower.props.desk.empty');
+  const act = p.status === 'work' && p.act && tr(`team.act.${p.act}`) !== `team.act.${p.act}` ? tr(`team.act.${p.act}`) : tr(`team.status.${p.status}`);
+  return tr('team.tower.props.desk.busy', { who: [p.role, p.project].filter(Boolean).join(' · ') || tr('common.session'), what: act });
+}
 const lampOn = (L) => (L.on == null ? night && !!L.lit : L.on);
 function paintLamp(L) { L.bulb.color.copy(lampOn(L) ? BULB_ON : BULB_OFF); }
 function bounce(D, grp) { if (!reduceMotion && grp && !D.fx.bounces.some((b) => b.g === grp)) D.fx.bounces.push({ g: grp, t: 0, base: grp.scale.clone() }); }
@@ -288,7 +303,7 @@ function steam(at) {
   particles.push({ m, v: new THREE.Vector3(rand(-0.04, 0.04), 0.32, rand(-0.04, 0.04)), life: 1.8, max: 1.8, kind: 'steam' });
 }
 
-/** room.view: { lit, bySeat: Map seat -> person, shadows, atDesk(person) } (world/team-tower.js fills it). */
+/** room.view: { name, st, lit, bySeat: Map seat -> person, shadows, atDesk(person) } (world/team-tower.js fills it). */
 function update(D, dt, t) {
   D.rooms.forEach((R, i) => {
     const v = R.view || { lit: false, bySeat: new Map(), shadows: 0, atDesk: () => false };

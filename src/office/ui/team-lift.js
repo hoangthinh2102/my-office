@@ -75,7 +75,7 @@ export function towerClick(ray, ev) {
 /** Hover: is the pointer over something in the building? A thing to click gets its outline and name, as on your floor. */
 export function towerHover(ray, ev) {
   const hit = pickTower(ray);
-  setHoverProp(hit?.kind === 'prop' ? hit.prop : null, ev);
+  setHoverProp(hit?.prop || null, ev);
   return !!hit;
 }
 
