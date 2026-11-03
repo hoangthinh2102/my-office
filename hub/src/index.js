@@ -1,11 +1,14 @@
 // The team hub, as a Cloudflare Worker: one Durable Object per team (team.js) holds that team's records in SQLite.
 //
 //   POST /teams              create a team (signed by the creator's key; CREATE_TOKEN, if set, is required too)
-//   POST /t/<team>/invites   a one-time invite link (the team's creator only)
+//   POST /t/<team>/invites   a one-time invite link (admins only)
 //   POST /t/<team>/join      join with an invite code (signed by the newcomer's key)
 //   GET  /t/<team>/me        the team, who you are, the members
-//   POST /t/<team>/leave     leave the team
-//   POST /t/<team>/policy    the team's settings ({ details }; the team's creator only)
+//   POST /t/<team>/leave     leave the team (not the last admin while others remain)
+//   POST /t/<team>/promote   make a member an admin ({ member }; admins only)
+//   POST /t/<team>/stepdown  stop being an admin (yourself only; not the last one)
+//   POST /t/<team>/remove    take a member out of the team ({ member }; admins only, never another admin)
+//   POST /t/<team>/policy    the team's settings ({ details }; admins only)
 //   GET  /t/<team>/ws        a member's WebSocket: its room up, everyone else's rooms down (signed in the query)
 //   GET  /j/<team>.<code>    an invite link opened in a browser: the team's name and how to join (hub/src/invite-page.js)
 //
@@ -15,9 +18,9 @@ import { invitePage } from './invite-page.js';
 
 export { Team } from './team.js';
 
-const VERSION = '0.3.2';
+const VERSION = '0.4.0';
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
-const ACTIONS = new Set(['invites', 'join', 'me', 'leave', 'policy', 'ws', 'knock', 'answer', 'revoke', 'code', 'redeem', 'access']);
+const ACTIONS = new Set(['invites', 'join', 'me', 'leave', 'policy', 'ws', 'knock', 'answer', 'revoke', 'code', 'redeem', 'access', 'promote', 'stepdown', 'remove']);
 
 const hub = {
   async fetch(request, env) {

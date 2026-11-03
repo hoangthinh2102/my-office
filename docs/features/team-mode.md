@@ -1,4 +1,4 @@
-# Chế độ team (bước 1–4: danh tính, hub, relay, toà nhà, phòng đóng)
+# Chế độ team (bước 1–6: danh tính, hub, relay, toà nhà, phòng đóng, admin)
 
 > Lark task: — · PR: #1 (bước 1), #2 + #3 (bước 2), #4 (bước 3a), #5 (bước 3b), #6 (bước 4), mời / vào team trên giao diện: (điền khi tạo) · Ngày: 2026-11-03
 > Hướng dẫn cho người dùng: [docs/team-guide.md](../team-guide.md)
@@ -20,7 +20,7 @@ Bước 3a thêm **toà nhà** trên trang: nút toà nhà trên thanh trên cù
 dừng, bấm được ngay trên máy này) và phòng của mọi người, chia theo tầng, mỗi tầng 4 phòng. Chỉ xem.
 
 Bước 3b dựng **toà nhà 3D** (kiểu văn phòng Tập đoàn): các tầng của team xếp chồng trên cánh phòng ban, thang máy
-bên phải sân khấu để xem toàn nhà hoặc vào từng tầng. Panel có thêm cài đặt team cho người tạo team.
+bên phải sân khấu để xem toàn nhà hoặc vào từng tầng. Panel có thêm cài đặt team cho admin.
 
 Bước 4 làm **phòng đóng**:
 - gõ cửa xin xem; chủ phòng cho xem 1 giờ / hết hôm nay / luôn (danh sách tin cậy) hoặc từ chối;
@@ -41,7 +41,15 @@ Chuẩn bị chạy thử (hub **0.3.2**): **chỉ cần gửi link mời**.
 - Lệnh `node bin/cli.mjs setup` làm cả lần cài đầu; `node bin/cli.mjs update` lên bản mới.
 - Checklist buổi thử: [docs/team-trial.md](../team-trial.md).
 
-Chưa có: admin. Lộ trình ở cuối file.
+Bước 6, **admin** (hub **0.4.0**):
+- người tạo team là admin đầu tiên. Admin mời người, cho người khác làm admin, xoá thành viên, đổi cài đặt team;
+- không ai xoá được admin khác: chỉ chính admin đó tự thôi được. Admin cuối cùng không thôi được, và không rời team được
+  khi team còn người khác (để luôn còn người mời được);
+- vai trò lưu trên hub (cột `members.role` trong SQLite của team), mỗi lần đổi ghi vào bảng `audit`;
+- trên trang: phần **Thành viên** trong panel toà nhà. Lệnh: `team admin add <tên>`, `team admin stepdown`,
+  `team remove <tên>`.
+
+Lộ trình ở cuối file.
 
 ## Cách sử dụng
 
@@ -50,7 +58,7 @@ Chưa có: admin. Lộ trình ở cuối file.
 | Lệnh | Việc |
 | --- | --- |
 | `team create --hub <url> --name <tên team> [--me <tên>] [--token <token>]` | Tạo team, máy này là thành viên đầu tiên. In **khoá khôi phục** một lần duy nhất. |
-| `team invite` | Link mời dùng một lần, hết hạn sau 15 phút. **Chỉ người tạo team** (từ hub 0.3.1). |
+| `team invite` | Link mời dùng một lần, hết hạn sau 15 phút. **Chỉ admin**. |
 | `team join <link mời> [--me <tên>]` | Vào team. |
 | `team status` | Team, tên của bạn, chế độ phòng, danh sách thành viên. |
 | `team leave [--local]` | Rời team trên hub rồi xoá khoá khỏi máy. `--local`: xoá trên máy kể cả khi không kết nối được hub. |
@@ -58,7 +66,10 @@ Chưa có: admin. Lộ trình ở cuối file.
 | `team room open\|closed` | Mở phòng (mọi thành viên xem được, chỉ xem) hoặc đóng lại. Có hiệu lực ngay, không cần khởi động lại. |
 | `team pause` / `team resume` | Ngừng gửi mọi thứ lên hub (phòng hiện offline) / bật lại. |
 | `team rooms` | Các phòng đang thấy (đọc từ văn phòng đang chạy, `GET /api/team`). |
-| `team policy details on\|off` | Cài đặt của team, **chỉ người tạo team**: cho phòng mở hiện tên file và câu lệnh (đã che bí mật). Mặc định tắt. |
+| `team admin add <tên>` | (admin) Cho một thành viên làm admin. Bấm nhầm thì chỉ người đó tự thôi được. |
+| `team admin stepdown` | Thôi làm admin. Admin cuối cùng không thôi được: cho người khác làm admin trước. |
+| `team remove <tên>` | (admin) Xoá một thành viên khỏi team, ngay lập tức. Không xoá được admin khác, không tự xoá mình (dùng `leave`). |
+| `team policy details on\|off` | Cài đặt của team, **chỉ admin**: cho phòng mở hiện tên file và câu lệnh (đã che bí mật). Mặc định tắt. |
 | `team grants` | Bước 4: ai được xem phòng bạn (và đến khi nào), ai đang gõ cửa, 10 dòng nhật ký gần nhất. |
 | `team revoke <tên>` | Thôi cho người đó xem, có hiệu lực ngay. Trùng tên thì làm trên trang. |
 | `team code` | Mã xem dùng một lần (10 phút). Người dùng mã được xem 1 giờ. Tối đa 5 mã chưa dùng. |
@@ -123,7 +134,7 @@ Chỉ ở kiểu văn phòng **Tập đoàn** (`hq`); các kiểu khác chỉ c�
 
 ### Cài đặt team trong panel (bước 3b)
 
-- Mọi người thấy một dòng: phòng mở đang hiện hay ẩn tên file / câu lệnh, do người tạo team đặt.
+- Mọi người thấy một dòng: phòng mở đang hiện hay ẩn tên file / câu lệnh, do admin đặt.
 - Người tạo team thấy nhãn **Người tạo team** và công tắc **Hiện tên file và câu lệnh** (chỉ bấm được trên máy chạy văn
   phòng). Hub vẫn kiểm tra quyền: người khác gọi cũng bị từ chối.
 
@@ -167,8 +178,8 @@ Máy đã ở team thì báo, link không hợp lệ thì báo lỗi.
 
 Code: `src/office/ui/team-join.js` (markup trong `TeamModal.tsx` và `SettingsPanel.tsx`).
 
-- **Panel toà nhà**, phần *Phòng của bạn*: người tạo team thấy nút **Mời người vào team**. Bấm vào thì hiện link, nút
-  chép, giờ hết hạn. Người khác thấy "Chỉ người tạo team mời được người mới".
+- **Panel toà nhà**, phần *Phòng của bạn*: admin thấy nút **Mời người vào team**. Bấm vào thì hiện link, nút
+  chép, giờ hết hạn. Người khác thấy "Chỉ admin mời được người mới".
 - **Cài đặt → Khác → Team**: chưa vào team thì có ô link mời, ô tên (để trống: tên git) và nút **Vào team**. Đã vào
   team thì hiện tên team và nút **Mở Toà nhà**. Trên điện thoại chỉ có dòng nhắc vào team trên máy chạy văn phòng.
 - Vào xong, relay tự kết nối (không cần khởi động lại). Phòng bắt đầu ở chế độ đóng.
@@ -177,6 +188,25 @@ Code: `src/office/ui/team-join.js` (markup trong `TeamModal.tsx` và `SettingsPa
 | --- | --- | --- | --- |
 | `POST` | `/api/team/invite` | `{}` | `{ ok, invite, expiresAt }` · `{ ok: false, code: 'not-owner' }` |
 | `POST` | `/api/team/join` | `{ link, name? }` | `{ ok, team }` · `{ ok: false, code }` (vd. `bad-invite`, `invite-used`, `already-in-team`) |
+
+Cùng điều kiện như `/api/team/room`: loopback, không qua tunnel, cùng origin, JSON.
+
+### Thành viên và admin trong panel (bước 6)
+
+Code: `src/office/ui/team-members.js` (markup trong `TeamModal.tsx`). Phần **Thành viên** nằm dưới *Phòng của bạn*,
+gập lại sẵn, tiêu đề ghi số người và số admin. Mỗi dòng: tên, "bạn", nhãn **Admin**.
+
+- Admin thấy ở mỗi thành viên thường: **Cho làm admin** và **Xoá khỏi team**. Cả hai phải bấm hai lần (lần đầu nút đổi
+  thành "Bấm lần nữa…", 5 giây không bấm thì thôi), vì cho làm admin rồi thì chỉ người đó tự thôi được.
+- Ở dòng của mình, admin có **Thôi làm admin** (hai lần bấm). Admin duy nhất thì nút mờ, kèm lời nhắc.
+- Ở dòng của admin khác: "Chỉ họ tự thôi được".
+- Người bị xoá: socket bị đóng (4001), văn phòng của họ ghi "Bạn không còn ở team này…" và chỉ lệnh `team leave` để
+  quên team trên máy đó. Phòng của họ biến khỏi toà nhà của mọi người ngay.
+- Trên điện thoại các nút bị khoá (chỉ xem), như các phần khác.
+
+| Method | Path | Body | Trả về |
+| --- | --- | --- | --- |
+| `POST` | `/api/team/member` | `{ action: 'promote' \| 'stepdown' \| 'remove', member? }` | `{ ok, team }` · `{ ok: false, code }` (vd. `last-admin`, `is-admin`) |
 
 Cùng điều kiện như `/api/team/room`: loopback, không qua tunnel, cùng origin, JSON.
 
@@ -218,12 +248,15 @@ Mọi yêu cầu (trừ `GET /` và `GET /j/…`) phải **có chữ ký** (xem 
 | --- | --- | --- | --- |
 | GET | `/` | ai cũng được | `{ name: "my-office-hub", version, protocol: 1 }` |
 | GET | `/j/<team>.<mã>` | trình duyệt | Trang chữ hướng dẫn chạy `team join` với link này |
-| POST | `/teams` | người tạo team | Body `{ team, name }`. Header `x-create-token` nếu hub có đặt `CREATE_TOKEN`. → 201 `{ team: {id, name}, me: {id, name, role} }` |
-| POST | `/t/<team>/invites` | người tạo team | → 201 `{ invite, code, expiresAt }`. Người khác: 403 `not-owner` (từ 0.3.1) |
+| POST | `/teams` | người tạo team | Body `{ team, name }`. Header `x-create-token` nếu hub có đặt `CREATE_TOKEN`. → 201 `{ team: {id, name}, me: {id, name, role: 'admin', owner: true} }` |
+| POST | `/t/<team>/invites` | admin | → 201 `{ invite, code, expiresAt }`. Người khác: 403 `not-owner` |
 | POST | `/t/<team>/join` | người mới | Body `{ code, name }` → 201 `{ team, me }` |
 | GET | `/t/<team>/me` | thành viên | → 200 `{ team, me, members: [{ id, name, role, joinedAt }] }` |
-| POST | `/t/<team>/leave` | thành viên | → 200 `{ ok: true }`. Socket của người đó bị đóng (mã 4001), mọi người nhận `{ t: 'gone' }` |
-| POST | `/t/<team>/policy` | người tạo team | Body `{ details: boolean }` → 200 `{ policy }`. Người khác: 403 `not-owner` |
+| POST | `/t/<team>/leave` | thành viên | → 200 `{ ok: true }`. Socket của người đó bị đóng (mã 4001), mọi người nhận `{ t: 'gone' }` và `{ t: 'members' }`. Admin cuối cùng khi team còn người khác: 409 `last-admin` |
+| POST | `/t/<team>/promote` | admin | Body `{ member }` → 200 `{ members, me }`. 409 `already-admin`, 404 `no-member` |
+| POST | `/t/<team>/stepdown` | admin (chính mình) | → 200 `{ members, me }`. 409 `not-admin`, 409 `last-admin` |
+| POST | `/t/<team>/remove` | admin | Body `{ member }` → 200 `{ members, me }`; như người đó tự rời. 403 `is-admin` (admin khác), 409 `remove-self`, 404 `no-member` |
+| POST | `/t/<team>/policy` | admin | Body `{ details: boolean }` → 200 `{ policy }`. Người khác: 403 `not-owner` |
 | POST | `/t/<team>/knock` | thành viên | Body `{ room }` → 201 `{ knock: { room, at } }`; đang chờ sẵn thì 200, không báo lần hai |
 | POST | `/t/<team>/answer` | chủ phòng | Body `{ viewer, grant, dayEnd? }` → 200 `{ grants, knocks }` |
 | POST | `/t/<team>/revoke` | chủ phòng | Body `{ viewer }` → 200 `{ grants }` |
@@ -238,9 +271,9 @@ Mã lỗi:
 | --- | --- | --- |
 | 400 | `bad-request` | Body không phải JSON, thiếu tên, mã mời sai định dạng |
 | 401 | `unsigned`, `bad-signature`, `clock`, `replay` | Thiếu chữ ký, chữ ký sai, đồng hồ lệch hơn 60 giây, gửi lại một yêu cầu cũ |
-| 403 | `not-member`, `create-token`, `not-owner` | Khoá không thuộc thành viên nào còn trong team; thiếu hoặc sai token tạo team; không phải người tạo team (đổi cài đặt, tạo link mời) |
-| 404 | `no-team`, `invite-unknown`, `not-found`, `no-room`, `no-knock`, `no-grant`, `code-unknown` | Team không tồn tại; mã mời không tồn tại; đường dẫn lạ; phòng không có (hoặc là phòng mình); không có lượt gõ cửa (đã trả lời / quá 10 phút); người đó không được xem; mã xem không tồn tại |
-| 409 | `exists`, `already-member`, `room-open`, `already-allowed`, `own-room` | Team id đã có; khoá này đã là thành viên; phòng đang mở; đã được xem; mã của phòng mình |
+| 403 | `not-member`, `create-token`, `not-owner`, `is-admin` | Khoá không thuộc thành viên nào còn trong team; thiếu hoặc sai token tạo team; không phải admin (tạo link mời, đổi cài đặt, cho làm admin, xoá thành viên); xoá một admin khác |
+| 404 | `no-team`, `invite-unknown`, `not-found`, `no-room`, `no-knock`, `no-grant`, `code-unknown`, `no-member` | Team không tồn tại; mã mời không tồn tại; đường dẫn lạ; phòng không có (hoặc là phòng mình); không có lượt gõ cửa (đã trả lời / quá 10 phút); người đó không được xem; mã xem không tồn tại; không có thành viên đó |
+| 409 | `exists`, `already-member`, `room-open`, `already-allowed`, `own-room`, `already-admin`, `not-admin`, `last-admin`, `remove-self` | Team id đã có; khoá này đã là thành viên; phòng đang mở; đã được xem; mã của phòng mình; đã là admin; không phải admin (thôi làm admin); admin cuối cùng thôi hoặc rời khi team còn người; tự xoá mình |
 | 410 | `invite-used`, `invite-expired`, `code-used`, `code-expired` | Mã mời / mã xem đã dùng hoặc hết hạn |
 | 413 | `too-large` | Body hơn 16 KB |
 | 429 | `too-many-invites`, `join-paused`, `too-many-knocks`, `too-many-codes`, `redeem-paused` | Một người có 10 mã mời chưa dùng; team nhận 20 mã sai trong 10 phút; một người gõ cửa 5 lần trong 10 phút; một phòng có 5 mã xem chưa dùng; một người nhập sai mã xem 10 lần trong 10 phút |
@@ -282,7 +315,8 @@ Phần code ký và kiểm chữ ký nằm ở `shared/team-protocol.js`, dùng 
 
 | `t` | Nội dung |
 | --- | --- |
-| `hello` | `{ team, me: { id, name, owner }, policy: { details }, rooms: [room…], grants, knocks, asks }`, ngay khi kết nối |
+| `hello` | `{ team, me: { id, name, role, owner }, policy: { details }, members, rooms: [room…], grants, knocks, asks }`, ngay khi kết nối. `owner` là `true` với admin (văn phòng bản cũ đọc trường này) |
+| `members` | `{ list: [{ id, name, role, joinedAt }], me }`: có người vào, rời, bị xoá, thành hoặc thôi làm admin |
 | `room` | `{ room: { member: { id, name }, online, mode, counts, people?, access?: { until }, at } }`. `access` chỉ có với người được xem phòng đóng đó |
 | `ev` | `{ member, list }`: từ phòng mở cho mọi người; từ phòng đóng chỉ cho người được xem |
 | `knock` | `{ knock: { viewer: { id, name }, at } }`: có người gõ cửa phòng bạn |
@@ -358,8 +392,8 @@ hết giờ: alarm của Durable Object ─▶ xoá grant, báo A và B ─▶ r
 
 | Bảng | Cột | Ghi chú |
 | --- | --- | --- |
-| `meta` | `k`, `v` | `team_id`, `name`, `root_key` (khoá của người tạo: hiện là người duy nhất đổi được cài đặt của team), `created_at`, `policy_details` |
-| `members` | `id`, `name`, `role`, `joined_at`, `left_at` | `role` hiện luôn là `member` |
+| `meta` | `k`, `v` | `team_id`, `name`, `root_key` (khoá của người tạo team: team tạo trước 0.4.0 thì người này thành admin đầu tiên khi hub thức dậy), `created_at`, `policy_details` |
+| `members` | `id`, `name`, `role`, `joined_at`, `left_at` | `role`: `admin` hoặc `member`. Vào lại team thì luôn là `member` |
 | `devices` | `key`, `member_id`, `added_at`, `revoked_at` | |
 | `invites` | `hash`, `created_by`, `created_at`, `expires_at`, `used_by`, `used_at` | Chỉ lưu `sha256` của mã. Mã hết hạn quá 1 ngày thì bị xoá. |
 | `grants` | `room`, `viewer`, `created_at`, `expires_at` | Bước 4: ai được xem phòng nào. `expires_at` null là luôn. Xoá khi hết hạn, bị thu hồi, hoặc một trong hai người rời team |
@@ -401,7 +435,7 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
   - Phần luật của hub cần `node:sqlite` (Node 22.13 trở lên), nên tự bỏ qua trên Node 20.
 - `tests/unit/team-relay.test.mjs` (bước 2): phòng đóng chỉ có số đếm; phòng mở không lộ prompt, tiêu đề, thư mục, pid,
   chi phí, tên file, lệnh; `details` và che bí mật; hub làm sạch dữ liệu rác; chỉ thành viên kết nối được; phòng đóng không
-  chuyển sự kiện; chỉ người tạo team đổi được `details`; phòng còn sau khi hub ngủ; rời team thì mất phòng; relay với
+  chuyển sự kiện; chỉ admin đổi được `details`; phòng còn sau khi hub ngủ; rời team thì mất phòng; relay với
   WebSocket giả lập (đóng, mở, tạm dừng).
 - Bước 2 đã chạy tay end-to-end: `wrangler dev` cộng hai server My Office thật (A, B). Đã kiểm tra: B thấy phòng mở của A;
   dữ liệu thô B nhận không có đường dẫn, prompt hay pid; sự kiện giả lập đọc `secret.ts` không lộ tên file khi `details`
@@ -438,6 +472,15 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
   link. B chưa ở team: Cài đặt → Khác có ô vào team; dán chữ bậy thì báo lỗi; dán link của A thì vào được, nút Toà nhà
   hiện ra, panel thấy phòng A và C. `team-protocol.test.mjs` thêm: thành viên thường tạo link mời bị 403 `not-owner`.
   Kèm sửa lỗi cũ: màn hình dưới 1560px thì nút trong Cài đặt mất chữ (luật thu nhỏ thanh trên cùng). Script đã xoá.
+- `tests/unit/team-admins.test.mjs` (bước 6): người tạo là admin; thành viên thường không mời, không đổi cài đặt, không
+  cho ai làm admin; cho làm admin thì mọi người nhận danh sách mới; admin không xoá được admin khác, không tự xoá mình;
+  người bị xoá mất quyền ngay; admin cuối cùng không thôi, không rời được khi còn người; team tạo trước 0.4.0 tự có
+  admin là người tạo; relay giữ danh sách thành viên và vai trò của mình.
+- Bước 6 đã chạy tay end-to-end: `wrangler dev` cộng ba văn phòng (An, Bình, Chi). Lệnh: Chi (thành viên) bị từ chối
+  `not-owner`; An là admin duy nhất không thôi / không rời được; An cho Bình làm admin; hai admin không xoá được nhau;
+  Bình mời được rồi thôi làm admin. Playwright trên trang: An bấm hai lần cho Chi làm admin, Chi thấy nút cài đặt và
+  nút mời; An xoá Bình, phòng Bình biến mất, văn phòng Bình báo đã bị xoá; Chi thôi làm admin, nút của An mờ lại. Đã
+  xem ở 1400px và 390px. Script đã xoá.
 - Bước 4 đã chạy tay end-to-end: `wrangler dev` cộng ba server (A, B, C): B gõ cửa, A thấy lượt gõ, A cho 1 giờ, B thấy
   người trong phòng A còn C không; A tạo mã, C dùng được một lần, lần hai báo `code-used`; A thu hồi C thì C mất ngay;
   `team grants` in đúng nhật ký. Playwright trên trang: gõ cửa từ thẻ phòng, toast và số đỏ bên chủ phòng, trả lời "Hết
@@ -448,9 +491,10 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
 
 ## Giới hạn & rủi ro
 
-- **Chưa có admin.** Không ai xoá được thành viên khác. Chỉ người tạo team mời được người mới (từ hub 0.3.1): người đó
-  mất máy và mất khoá khôi phục thì team không mời thêm được ai. Phòng mặc định đóng nên
-  người vào nhầm chỉ thấy các phòng đang mở.
+- **Admin cuối cùng mất máy và mất khoá khôi phục** thì team không mời thêm được ai. Nên có ít nhất hai admin. Phòng
+  mặc định đóng nên người vào nhầm chỉ thấy các phòng đang mở.
+- Không ai xoá được admin khác, kể cả khi admin đó không còn dùng: đây là luật đã chọn. Cho ai làm admin thì nghĩ kỹ.
+- Văn phòng bản cũ (trước bản này) vẫn chạy với hub 0.4.0 nhưng không có phần Thành viên.
 - **Mất máy và mất khoá khôi phục** thì không lấy lại được đúng thành viên đó: phải nhờ người khác mời và vào lại như
   người mới.
 - Trên macOS, khoá được truyền cho lệnh `security` qua tham số dòng lệnh trong khoảnh khắc lưu. Chỉ chính user đó thấy
@@ -468,7 +512,7 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
 ## Lộ trình
 
 1. ✅ Danh tính, hub, tạo / mời / vào / rời / khôi phục (tài liệu này)
-2. ✅ Relay: máy member gửi phòng đã lọc lên hub, nhận phòng của mọi người về; mở / đóng / tạm dừng; cài đặt `details` chỉ người tạo team đổi được
+2. ✅ Relay: máy member gửi phòng đã lọc lên hub, nhận phòng của mọi người về; mở / đóng / tạm dừng; cài đặt `details` chỉ admin đổi được
 3. Xem team:
    - 3a ✅ Bảng toà nhà trên trang: phòng của bạn (mở / đóng / tạm dừng), phòng mọi người theo tầng, 4 phòng một tầng
    - 3b ✅ Toà nhà 3D: các tầng của team trên cánh phòng ban, 4 phòng một tầng; xem toàn nhà hoặc từng tầng bằng thang
@@ -477,7 +521,8 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
    ra vào; người được xem thấy phòng đóng như phòng mở. Không làm QR
 5. Chạy thử 3–4 người: chuẩn bị xong (link mời → trang hướng dẫn → một dòng lệnh / một nút), checklist ở
    [docs/team-trial.md](../team-trial.md)
-6. Admin: thêm / rút admin, admin xoá member (không xoá được admin khác)
+6. ✅ Admin: người tạo là admin đầu tiên; thêm admin, tự thôi làm admin, admin xoá member (không xoá được admin khác);
+   admin cuối cùng không thôi / không rời được. Hub 0.4.0
 7. Mã hoá đầu cuối cho phòng đóng, mở cho cả team
 8. Sau này (đã ghi lại, chưa làm):
    - **một người ở nhiều team**: mỗi team một khoá, một kết nối và chế độ phòng riêng, panel có chỗ chuyển team.

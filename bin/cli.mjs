@@ -274,7 +274,8 @@ function start() {
    my-office team create --hub <url> --name <team> [--me <your name>] [--token <hub's create token>]
    my-office team invite | join <invite link> [--me <name>] | status | leave [--local] | restore <recovery key>
    my-office team room open|closed | pause | resume | rooms | policy details on|off
-   my-office team grants | revoke <name> | code | redeem <code>   (closed rooms: who may look in, view codes) */
+   my-office team grants | revoke <name> | code | redeem <code>   (closed rooms: who may look in, view codes)
+   my-office team admin add <name> | admin stepdown | remove <name>   (admins) */
 async function team() {
   const { createTeamClient, TeamError } = await import('../server/team/client.mjs');
   const client = createTeamClient({ dataDir: DATA_DIR });
@@ -306,9 +307,9 @@ async function team() {
       console.log(tr('cli.team.statusTitle', { team: r.team.name, hub: r.state.hub }));
       ok(tr('cli.team.you', { name: r.me.name, room: tr(`cli.team.room.${r.state.room?.mode || 'closed'}`) }));
       if (r.state.paused) warn(tr('cli.team.isPaused'));
-      console.log(`  ${tr(r.policy?.details ? 'cli.team.policyIsOn' : 'cli.team.policyIsOff')}${r.me.owner ? ` ${tr('cli.team.youOwn')}` : ''}`);
+      console.log(`  ${tr(r.policy?.details ? 'cli.team.policyIsOn' : 'cli.team.policyIsOff')}${r.me.owner ? ` ${tr('cli.team.youAdmin')}` : ''}`);
       console.log(`  ${tr('cli.team.members', { n: r.members.length })}`);
-      for (const m of r.members) console.log(`    · ${m.name}${m.id === r.me.id ? ` (${tr('cli.team.itsYou')})` : ''}`);
+      for (const m of r.members) console.log(`    · ${m.name}${[m.role === 'admin' && tr('cli.team.admin'), m.id === r.me.id && tr('cli.team.itsYou')].filter(Boolean).map((x) => ` (${x})`).join('')}`);
     } else if (sub === 'room') {
       if (!['open', 'closed'].includes(arg)) { console.log(tr('cli.team.usage')); process.exitCode = 1; return; }
       await client.setRoom(arg);
@@ -357,6 +358,18 @@ async function team() {
       if (!arg) { console.log(tr('cli.team.usage')); process.exitCode = 1; return; }
       const r = await client.redeem(arg);
       ok(tr(r.until == null ? 'cli.team.redeemedAlways' : 'cli.team.redeemed', { name: r.room.name, time: r.until == null ? '' : until(r.until) }));
+    } else if ((sub === 'admin' && arg === 'add') || sub === 'remove') {
+      const who = sub === 'remove' ? arg : args[3];
+      if (!who) { console.log(tr('cli.team.usage')); process.exitCode = 1; return; }
+      const { me, members } = await client.status();
+      const m = members.filter((x) => x.id !== me.id && x.name.toLowerCase() === who.toLowerCase());
+      if (!m.length && me.name.toLowerCase() === who.toLowerCase()) { bad(tr(sub === 'remove' ? 'cli.team.err.remove-self' : 'cli.team.err.already-admin')); process.exitCode = 1; return; }
+      if (m.length !== 1) { bad(tr(m.length ? 'cli.team.memberTwice' : 'cli.team.noSuchMember', { name: who })); process.exitCode = 1; return; }
+      if (sub === 'remove') { await client.remove(m[0].id); ok(tr('cli.team.removed', { name: m[0].name })); }
+      else { await client.promote(m[0].id); ok(tr('cli.team.promoted', { name: m[0].name })); }
+    } else if (sub === 'admin' && arg === 'stepdown') {
+      await client.stepDown();
+      ok(tr('cli.team.steppedDown'));
     } else if (sub === 'leave') {
       await client.leave({ local: args.includes('--local') });
       ok(tr('cli.team.left'));

@@ -131,11 +131,19 @@ export function createTeamClient({ dataDir, fetch = globalThis.fetch }) {
       if (!s) throw new TeamError('no-team');
       await writeState({ ...s, paused: !!paused });
     },
-    /** The team's settings; only the team's creator may change them. */
+    /** The team's settings; only admins may change them. */
     async setPolicy({ details }) {
       const { s, keys } = await current();
       return (await call(s.hub, keys, 'POST', `/t/${s.teamId}/policy`, { details: !!details })).policy;
     },
+
+    // Admins: the team's creator is the first; admins make others admins and take members (never admins) out.
+    /** Makes `member` an admin: { members, me }. */
+    async promote(member) { return hubCall('POST', 'promote', { member: String(member || '') }); },
+    /** Stops being an admin (not the last one): { members, me }. */
+    async stepDown() { return hubCall('POST', 'stepdown', {}); },
+    /** Takes `member` out of the team: { members, me }. */
+    async remove(member) { return hubCall('POST', 'remove', { member: String(member || '') }); },
 
     // Closed rooms (step 4): knocking on someone's door, answering knocks on yours, view codes, who may look in.
     /** Asks to see `room`'s closed room. */

@@ -33,7 +33,7 @@ export default async function TeamModal() {
                 <span>{t('team.policy.switch')}</span>
               </label>
             </div>
-            {/* invite someone (the team's creator; src/office/ui/team-join.js) */}
+            {/* invite someone (admins; src/office/ui/team-join.js) */}
             <div className="team-invite" id="team-invite">
               <button type="button" className="team-code-make" id="team-invite-make" hidden><span data-icon="users"></span>{t('team.join.invite')}</button>
               <span className="team-code-out" id="team-invite-out" hidden></span>
@@ -62,6 +62,12 @@ export default async function TeamModal() {
               </details>
             </div>
           </section>
+          {/* who is in the team, and its admins (src/office/ui/team-members.js) */}
+          <details className="team-members" id="team-members" hidden>
+            <summary><b>{t('team.members.title')}</b> <span id="team-members-n"></span></summary>
+            <p className="team-access-note" id="team-members-note"></p>
+            <ul className="team-mem-list" id="team-members-list"></ul>
+          </details>
           <div className="team-floors" id="team-floors"></div>
           <p className="dir-note team-foot">{t('team.readOnly')} <span id="team-3d-note"></span></p>
         </div>

@@ -1,4 +1,4 @@
-// Team mode without the command line: the team's creator makes an invite link in the building panel, and someone not
+// Team mode without the command line: an admin makes an invite link in the building panel, and someone not
 // in a team yet joins with one in Settings → More (markup: TeamModal.tsx, SettingsPanel.tsx). Both go through this
 // computer's server (POST /api/team/invite, POST /api/team/join), which only answers the computer the office runs on.
 import { state } from '../core/state.js';
@@ -24,7 +24,7 @@ const errText = (code) => {
 /** Follows the team state: the invite block in the panel, the join form in Settings. */
 export function syncJoin(t) {
   const inTeam = !!t?.inTeam, owner = !!t?.me?.owner;
-  // the building panel: only the team's creator invites
+  // the building panel: only admins invite
   const make = $('team-invite-make');
   if (make) {
     make.hidden = !owner; make.disabled = !local();

@@ -187,3 +187,31 @@
 .st-team-join input:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
 .st-team-join .tb-btn { width: 100%; justify-content: center; }
 .is-phone .st-team-join input { min-height: 40px; font-size: 16px; }
+
+/* members and admins (ui/team-members.js) */
+.team-members { border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; background: var(--card); }
+.team-members[hidden] { display: none; }
+.team-members summary { cursor: pointer; font-size: .86rem; }
+.team-members summary span { color: var(--muted); font-size: .76rem; font-weight: 500; margin-left: 4px; }
+.team-members .team-access-note { margin-top: 6px; }
+.team-mem-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.team-mem { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px dashed var(--line); }
+.team-mem:first-child { border-top: 0; }
+.team-mem .team-ava { width: 26px; height: 26px; font-size: .72rem; }
+.team-mem-who { display: flex; align-items: baseline; gap: 6px; min-width: 0; font-size: .8rem; }
+.team-mem-who b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.team-mem-who small { color: var(--muted); font-size: .7rem; }
+.team-mem-who .team-owner { margin-left: 2px; }
+.team-mem-acts { display: inline-flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.team-mem-hint { font-size: .7rem; color: var(--faint); }
+.team-mem-b { all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; font-size: .72rem; font-weight: 600; padding: 4px 10px;
+  border-radius: 8px; background: var(--card-2); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.team-mem-b:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--accent-line); }
+.team-mem-b.is-quiet { color: var(--muted); }
+.team-mem-b.is-yes { background: var(--accent-soft); color: var(--accent); }
+.team-mem-b.is-warn { background: var(--red-soft); color: var(--red); }
+.team-mem-b:disabled { cursor: default; opacity: .5; }
+.team-mem-b:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.is-phone .team-mem { grid-template-columns: auto minmax(0, 1fr); }
+.is-phone .team-mem-acts { grid-column: 1 / -1; justify-content: flex-start; }
+.is-phone .team-mem-b { min-height: 34px; }

@@ -95,11 +95,11 @@ Trang nhớ lần xem cuối: lần sau mở lại sẽ vào đúng toàn nhà h
 
 Xem thử: `http://localhost:4310/?demo&layout=hq`.
 
-**Người tạo team** thấy thêm trong panel toà nhà một công tắc "Hiện tên file và câu lệnh" (giống lệnh
+**Admin** thấy thêm trong panel toà nhà một công tắc "Hiện tên file và câu lệnh" (giống lệnh
 `team policy details on|off`). Mọi người đều thấy cài đặt này đang bật hay tắt.
 
 **Phòng mở cho người khác thấy**: từng phiên đang làm, chờ hay nghỉ; tên project (repo); chức danh; số subagent; **loại**
-việc đang làm (đọc file, sửa file, chạy lệnh…). Tên file và câu lệnh chỉ hiện nếu người tạo team bật cài đặt
+việc đang làm (đọc file, sửa file, chạy lệnh…). Tên file và câu lệnh chỉ hiện nếu admin bật cài đặt
 `team policy details on` (mặc định tắt). Kể cả khi đó, mật khẩu và token vẫn bị che.
 
 **Không bao giờ gửi đi**: prompt, tiêu đề cuộc trò chuyện, câu trả lời của Claude, đường dẫn thư mục, chi phí, thông tin
@@ -148,7 +148,7 @@ Lưu ý: thu hồi chỉ chặn từ lúc đó trở đi; người xem đã th�
 
 ## 4. Mời đồng đội
 
-**Chỉ người tạo team mời được người mới.** Thành viên khác thấy dòng "Chỉ người tạo team mời được người mới".
+**Chỉ admin mời được người mới.** Thành viên khác thấy dòng "Chỉ admin mời được người mới".
 
 Trên trang: mở **Toà nhà**, phần *Phòng của bạn*, bấm **Mời người vào team**. Link hiện ra kèm nút chép và giờ hết hạn.
 Hoặc chạy lệnh:
@@ -160,16 +160,43 @@ node bin/cli.mjs team invite
 Gửi link cho đúng một người, qua kênh riêng (tin nhắn trực tiếp). Mỗi link chỉ dùng được cho một người, hết hạn sau 15
 phút. Cần thêm thì tạo link mới.
 
-## 5. Rời team
+## 5. Admin và thành viên
+
+Người tạo team là **admin** đầu tiên. Admin mời người, cho người khác làm admin, xoá thành viên và đổi cài đặt của team.
+
+Trên trang: mở **Toà nhà**, bấm **Thành viên** (dưới *Phòng của bạn*). Mỗi người có nhãn **Admin** nếu là admin.
+
+- **Cho làm admin**: bấm, rồi bấm lần nữa để chắc chắn. Đã là admin thì chỉ chính người đó tự thôi được, nên chọn kỹ.
+- **Xoá khỏi team**: bấm hai lần. Người đó ra khỏi team ngay, phòng của họ biến khỏi toà nhà. Muốn quay lại thì cần
+  link mời mới.
+- **Thôi làm admin** (ở dòng của bạn): bấm hai lần. Bạn là admin duy nhất thì không thôi được: cho người khác làm admin
+  trước.
+- Không ai xoá được admin khác, và admin không tự xoá mình (dùng *Rời team*).
+
+Nên có **ít nhất hai admin**: một admin mất máy và mất khoá khôi phục thì vẫn còn người mời được.
+
+Hoặc dùng lệnh:
+
+```bash
+node bin/cli.mjs team status              # ai là admin
+node bin/cli.mjs team admin add <tên>     # cho làm admin
+node bin/cli.mjs team admin stepdown      # thôi làm admin
+node bin/cli.mjs team remove <tên>        # xoá khỏi team
+```
+
+## 6. Rời team
 
 ```bash
 node bin/cli.mjs team leave
 ```
 
 Lệnh này rời team trên hub và xoá khoá khỏi máy bạn. Nếu hub không còn chạy, dùng `team leave --local` để chỉ xoá trên
-máy.
+máy. Admin cuối cùng không rời được khi team còn người khác: cho người khác làm admin trước.
 
-## 6. Đổi máy hoặc cài lại máy
+Bị admin xoá khỏi team thì Toà nhà ghi "Bạn không còn ở team này": chạy `team leave` để quên team trên máy, rồi xin link
+mời mới nếu cần vào lại.
+
+## 7. Đổi máy hoặc cài lại máy
 
 - **Người tạo team** nhận được một **khoá khôi phục** (bắt đầu bằng `mo-team-1.`) lúc tạo. Trên máy mới, chạy:
 
@@ -200,7 +227,10 @@ máy.
 | `doctor` báo chế độ team cần Node 22 | Cập nhật Node.js lên 22 trở lên, rồi khởi động lại văn phòng |
 | Mã xem đã được dùng / đã hết hạn / không tồn tại | Xin chủ phòng một mã mới |
 | Vừa nhập sai mã nhiều quá / gõ cửa nhiều quá | Đợi 10 phút rồi thử lại |
-| Chỉ người tạo team mới làm được việc này | Nhờ người tạo team tạo link mời |
+| Chỉ admin mới làm được việc này | Nhờ một admin (xem **Toà nhà → Thành viên**) |
+| Bạn là admin duy nhất | Cho một người khác làm admin trước, rồi mới thôi hoặc rời team |
+| Không xoá được admin khác | Đúng luật: chỉ chính admin đó tự thôi được. Nhờ họ thôi làm admin trước |
+| Thêm admin / xoá thành viên báo `not-found` | Hub chưa lên bản 0.4.0: báo người quản lý hub chạy `cd hub && npm run deploy` |
 | Lệnh cài báo cần Node 22 | `brew install node@22` (hoặc `nvm install 22`), mở Terminal mới, chạy lại lệnh |
 | Lệnh cài báo thư mục đã có nhưng không phải My Office | Chọn chỗ khác: thêm `MY_OFFICE_DIR=~/thu-muc-khac` trước `bash` |
 | Bấm "Mở My Office để vào team" mà không mở được | Văn phòng chưa chạy: dùng dòng lệnh "Chưa có My Office" trên trang (chạy lại không sao) |
@@ -221,7 +251,7 @@ npx wrangler secret put CREATE_TOKEN  # chuỗi bí mật: chỉ người có n�
 npm run deploy                        # in ra https://my-office-hub.<tài-khoản>.workers.dev
 ```
 
-Tạo team (người tạo là thành viên đầu tiên):
+Tạo team (người tạo là thành viên và admin đầu tiên):
 
 ```bash
 cd ..
@@ -235,6 +265,6 @@ Sau đó `team invite` để mời từng người.
 Trang của link mời dùng lệnh cài ở `SETUP_URL` (mặc định `setup.sh` trên nhánh `main` của GitHub). Hub tự dựng thì đặt
 biến `SETUP_URL` trong `wrangler.toml` (`[vars]`) nếu dùng bản fork.
 
-**Cài đặt của team** (chỉ người tạo team): `node bin/cli.mjs team policy details on|off` để cho phòng mở hiện hoặc ẩn tên
+**Cài đặt của team** (chỉ admin): `node bin/cli.mjs team policy details on|off` để cho phòng mở hiện hoặc ẩn tên
 file và câu lệnh. Chi tiết kỹ thuật (API, chữ ký, dữ liệu, giới hạn):
 [docs/features/team-mode.md](features/team-mode.md).
