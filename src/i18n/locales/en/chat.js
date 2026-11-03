@@ -102,7 +102,7 @@ export default {
     doneEmpty: 'Done, boss ✅',
     notStarted: 'The work couldn’t start: {why}',
     threadBusy: '{name} is still on your last message: wait for the answer, then write again',
-    why: { overBudget: "past today's token budget", busy: '3 are running already, wait for one to finish', tooMany: 'a lot of work given this hour, try later', noClaude: 'Claude Code isn’t on the Mac', noDir: 'the folder is gone', empty: 'nothing written' },
+    why: { overBudget: "past today's token budget", busy: '3 are running already, wait for one to finish', tooMany: 'a lot of work given this hour, try later', noClaude: 'Claude Code isn’t on the Mac', noDir: 'the folder is gone', empty: 'nothing written', tooManyFiles: 'at most 8 files a message', fileTooBig: 'file too big (15 MB a file, 40 MB a message at most)', badFile: "couldn't read the file" },
   },
   hintRc: '💡 Writing to “The whole group” is just chatting, never sent to Claude. For real work: tap “To” over the input, pick a conversation and write; it answers in the group, and remembers what you said.',
   note: 'The office’s own make-believe group chat, kept on this computer. What you write never reaches Claude.',

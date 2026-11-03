@@ -28,7 +28,7 @@
 .tb-zoom button::after, .tb-full::after { content: attr(aria-label); position: absolute; left: 50%; bottom: calc(100% + 12px); transform: translate(-50%, 4px); padding: 5px 9px; border-radius: 7px; background: #0B1018; border: 1px solid var(--line-2); color: var(--ink); font: 600 .72rem/1.2 var(--font); white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .15s, transform .15s; box-shadow: 0 6px 16px rgba(0, 0, 0, .4); }
 .tb-zoom button:hover::after, .tb-full:hover::after, .tb-zoom button:focus-visible::after, .tb-full:focus-visible::after { opacity: 1; transform: translate(-50%, 0); transition-delay: .25s; }
 @media (hover: none) { .tb-zoom button::after, .tb-full::after { display: none; } }
-.tb-zoom span { min-width: 42px; text-align: center; font-size: .76rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tb-zoom > span { min-width: 42px; text-align: center; font-size: .76rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .tb-fp { all: unset; height: 40px; display: inline-flex; align-items: center; gap: 8px; padding: 0 16px 0 13px; box-sizing: border-box; border-radius: 11px; background: var(--accent); color: var(--on-accent); font-size: .8rem; font-weight: 700; cursor: pointer; white-space: nowrap; box-shadow: 0 4px 14px rgba(239, 138, 95, .26), inset 0 1px 0 rgba(255, 255, 255, .28); transition: background .15s; }
 .tb-fp:hover { background: var(--accent-hi); }
 .tb-fp:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

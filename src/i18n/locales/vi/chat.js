@@ -102,7 +102,7 @@ export default {
     doneEmpty: 'Xong rồi sếp ơi ✅',
     notStarted: 'Chưa giao được việc: {why}',
     threadBusy: '{name} đang làm tin trước của bạn, đợi trả lời xong rồi nhắn tiếp nhé',
-    why: { overBudget: 'vượt ngân sách token hôm nay', busy: 'đang có 3 việc chạy, đợi xong bớt', tooMany: 'đã giao nhiều việc trong một giờ, thử lại sau', noClaude: 'không tìm thấy Claude Code trên Mac', noDir: 'thư mục không còn', empty: 'chưa có nội dung' },
+    why: { overBudget: 'vượt ngân sách token hôm nay', busy: 'đang có 3 việc chạy, đợi xong bớt', tooMany: 'đã giao nhiều việc trong một giờ, thử lại sau', noClaude: 'không tìm thấy Claude Code trên Mac', noDir: 'thư mục không còn', empty: 'chưa có nội dung', tooManyFiles: 'tối đa 8 file một tin', fileTooBig: 'file quá lớn (tối đa 15 MB một file, 40 MB một tin)', badFile: 'không đọc được file' },
   },
   hintRc: '💡 Nhắn “Cả nhóm” là trò chuyện vui, không gửi Claude. Muốn Claude làm thật: bấm “Gửi tới” ngay trên ô nhập, chọn một cuộc trò chuyện rồi nhắn; trả lời trong nhóm. Nhắn tiếp thì nó vẫn nhớ.',
   note: 'Nhóm chat vui của văn phòng, lưu trên máy này. Tin bạn gửi không đến Claude.',

@@ -49,10 +49,14 @@ export default async function DirectorModal() {
               <button type="button" className="btn btn--primary" id="dir-approve-ok">{t('director.approve.ok')}</button>
             </div>
             <form className="dir-input" id="dir-input">
+              <div className="dir-slash" id="dir-slash" role="listbox" aria-label={t('director.slash.label')} hidden></div>
+              <div className="dir-att" id="dir-att" hidden></div>
               <textarea id="dir-text" rows={2} maxLength={4000} placeholder={t('director.inputPh')} disabled></textarea>
               <div className="dir-input-row">
                 <span className="dir-mode" id="dir-mode"></span>
                 <button type="button" className="btn" id="dir-stop" hidden>{t('director.stop')}</button>
+                <input type="file" id="dir-file" multiple hidden />
+                <button type="button" className="btn dir-attach" id="dir-attach" aria-label={t('director.attach.button')} title={t('director.attach.button')} disabled><span data-icon="clip"></span></button>
                 <button type="submit" className="btn btn--primary" id="dir-send" disabled><span data-icon="send"></span>{t('director.send')}</button>
               </div>
             </form>

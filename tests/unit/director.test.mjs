@@ -171,3 +171,41 @@ test('recent conversations: folder, title (rename first), newest first, only rea
   assert.equal((await createRecent({ claudeDir: cl }).list()).some((x) => x.sid === c), false);
   fs.rmSync(work, { recursive: true, force: true });
 });
+
+test('the "/" list: the project\'s skills and commands first, then yours, synced ones and enabled plugins', async () => {
+  const { createSlash } = await import('../../server/slash.mjs');
+  const cl = tmp('office-cl3-'), proj = tmp('office-proj-');
+  const w = (f, t) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, t); };
+  w(path.join(proj, '.claude', 'skills', 'deploy', 'SKILL.md'), '---\nname: deploy\ndescription: Ship it\nargument-hint: <env>\n---\n');
+  w(path.join(proj, '.claude', 'commands', 'db', 'reset.md'), '# Reset the local database\n');
+  w(path.join(cl, 'skills', 'do-task', 'SKILL.md'), '---\nname: do-task\ndescription: "Làm một task"\n---\n');
+  w(path.join(cl, 'skills', 'deploy', 'SKILL.md'), '---\nname: deploy\ndescription: mine\n---\n');
+  w(path.join(cl, 'skills', 'hidden', 'SKILL.md'), '---\nname: hidden\nuser-invocable: false\n---\n');
+  w(path.join(cl, 'skills', 'synced', 'abc', 'pdf', 'SKILL.md'), '---\nname: pdf\ndescription: PDFs\n---\n');
+  w(path.join(cl, 'plugins', 'known_marketplaces.json'), JSON.stringify({ mk: { installLocation: path.join(cl, 'mk') } }));
+  w(path.join(cl, 'mk', 'plugins', 'review', 'commands', 'pr.md'), '---\ndescription: Review a PR\n---\n');
+  w(path.join(cl, 'settings.json'), JSON.stringify({ enabledPlugins: { 'review@mk': true, 'off@mk': false } }));
+  const l = await createSlash({ claudeDir: cl }).list(proj);
+  assert.deepEqual(l.map((x) => [x.name, x.src]), [['deploy', 'project'], ['db:reset', 'project'], ['do-task', 'user'], ['anthropic-skills:pdf', 'synced'], ['review:pr', 'plugin']]);
+  assert.equal(l[0].hint, '<env>'); assert.equal(l[1].desc, 'Reset the local database'); assert.equal(l[2].desc, 'Làm một task');
+});
+
+test('attachments are kept only while needed: saved to a temporary folder, dropped after, never outside it', async () => {
+  const { saveAttachments, dropAttachments, sweepAttachments, MAX_FILE } = await import('../../server/attach.mjs');
+  const root = tmp('office-att-');
+  const data = (s, type = 'text/plain') => `data:${type};base64,${Buffer.from(s).toString('base64')}`;
+  const r = saveAttachments([{ name: 'spec.md', data: data('# Spec') }, { name: 'spec.md', data: data('again') }, { name: '../../etc/passwd', data: data('x') }], root);
+  assert.ok(r.ok); assert.ok(r.dir.startsWith(root));
+  assert.deepEqual(r.items.map((x) => x.name), ['spec.md', 'spec (2).md', '.._.._etc_passwd'.replace(/^\.+/, '')]);
+  assert.equal(fs.readFileSync(r.items[0].path, 'utf8'), '# Spec');
+  for (const x of r.items) assert.ok(x.path.startsWith(r.dir + path.sep));
+  assert.equal(saveAttachments([{ name: 'big.bin', data: `data:application/octet-stream;base64,${Buffer.alloc(MAX_FILE + 1).toString('base64')}` }], root).code, 'fileTooBig');
+  assert.equal(saveAttachments(Array.from({ length: 9 }, (_, i) => ({ name: `${i}.txt`, data: data('x') })), root).code, 'tooManyFiles');
+  assert.equal(saveAttachments([{ name: 'x', data: 'not a data url' }], root).code, 'badFile');
+  dropAttachments('/etc', root); assert.ok(fs.existsSync('/etc'));   // (only inside its own folder)
+  dropAttachments(r.dir, root); assert.equal(fs.existsSync(r.dir), false);
+  const a = saveAttachments([{ name: 'a.txt', data: data('a') }], root), b = saveAttachments([{ name: 'b.txt', data: data('b') }], root);
+  const old = Date.now() / 1000 - 7 * 3600; fs.utimesSync(a.dir, old, old); fs.utimesSync(b.dir, old, old);
+  sweepAttachments(6, new Set([b.dir]), root);
+  assert.equal(fs.existsSync(a.dir), false); assert.equal(fs.existsSync(b.dir), true, 'a queued message keeps its files');
+});

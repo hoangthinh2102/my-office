@@ -30,6 +30,8 @@ import { createCompany, minutes, PERMS, permArgs, DEFAULT_PERM } from './company
 import { ASK_PROTOCOL, parseAsk, answerText } from './asks.mjs';
 import { createAgentSupport } from './agent-support.mjs';
 import { createRecent } from './recent.mjs';
+import { createSlash } from './slash.mjs';
+import { saveAttachments, dropAttachments, sweepAttachments } from './attach.mjs';
 import { createPerf } from './perf.mjs';
 import { pickLang, createT } from '../src/i18n/index.js';
 
@@ -687,6 +689,8 @@ setInterval(() => { try { checkBudgets(); } catch (err) { console.error('budget'
 const DM_FILE = path.join(DATA_DIR, 'dm.json');
 // every conversation of the last two weeks, open or not: anyone can be messaged without reopening them (server/recent.mjs)
 const recent = createRecent({ claudeDir: CLAUDE_DIR });
+// the "/" list of the director's office: the skills and commands a person's Claude Code offers (server/slash.mjs)
+const slash = createSlash({ claudeDir: CLAUDE_DIR });
 let dms = {};
 try { dms = JSON.parse(fs.readFileSync(DM_FILE, 'utf8')) || {}; for (const d of Object.values(dms)) { d.running = false; noteBranch(d); } } catch { /* none yet */ }
 function noteBranch(d) { if (d?.branch && d.sid && d.branch !== d.sid) branchRoot.set(d.branch, d.sid); }
@@ -715,15 +719,21 @@ const openElsewhere = (s) => !!(s && s.pid && alive(s.pid) && !officeRun(s.sid))
 /** { sid, text } to a person; { hire: { dir, title, brief, perm, next }, text } a new one; force: past a budget;
     chain: { hops, from } a hand-over. -> { ok, key } or { ok: false, code } */
 function dmSend(b) {
-  const text = String(b?.text || '').trim().slice(0, 8000);
-  if (!text) return { ok: false, code: 'empty' };
+  // attached files: saved now (a queued message keeps their paths), handed to Claude by path (server/attach.mjs)
+  // (kept nowhere: a temporary folder, deleted when the run ends or the message fails; the chat notes names and sizes)
+  let att = Array.isArray(b?.att) ? b.att : [], attDir = b?.attDir || null;
+  if (!att.length && Array.isArray(b?.files) && b.files.length) { const r = saveAttachments(b.files); if (!r.ok) return { ok: false, code: r.code }; att = r.items; attDir = r.dir; }
+  const fail = (x) => { dropAttachments(attDir); return x; };
+  const text = (String(b?.text || '').trim() || (att.length ? tr('director.attach.only') : '')).slice(0, 8000);
+  if (!text) return fail({ ok: false, code: 'empty' });
+  const shown = att.map(({ name, size, type }) => ({ name, size, type }));
   let d, from, dir, role = null, ws = null;
   if (b?.hire) {
     const want = String(b.hire.dir || '').replace(/^~(?=$|\/)/, os.homedir());
     if (want === '@workspace') { ws = agentSupport.workspace(); dir = ws?.root; } else dir = knownDirs.find((x) => x === want);
-    if (!dir || !fs.existsSync(dir)) return { ok: false, code: 'noDir' };
+    if (!dir || !fs.existsSync(dir)) return fail({ ok: false, code: 'noDir' });
     role = { title: String(b.hire.title || '').trim().slice(0, 60), brief: String(b.hire.brief || '').trim().slice(0, 600), perm: Object.hasOwn(PERMS, b.hire.perm) ? b.hire.perm : DEFAULT_PERM, next: String(b.hire.next || '') };
-    if (!b.force) { const over = overBudget(null, path.basename(dir)); if (over) return { ok: false, code: 'overBudget', over }; }
+    if (!b.force) { const over = overBudget(null, path.basename(dir)); if (over) return fail({ ok: false, code: 'overBudget', over }); }
     const key = `new-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
     d = dms[key] = { key, sid: null, name: role.title || path.basename(dir), dir, ws: !!ws, msgs: [], at: Date.now(), auto: !!b.auto, gate: b.gate || null };
     from = { dm: key, sid: null, hire: role, name: d.name, hops: b.chain?.hops || 0 };
@@ -733,19 +743,19 @@ function dmSend(b) {
     const old = s ? null : recent.get(sid);   // (a conversation nobody has open: carried straight on)
     d = dms[sid] || (s?.cwd ? (dms[sid] = { key: sid, sid, name: s.title || s.name, dir: s.cwd, msgs: [], at: Date.now() })
       : old ? (dms[sid] = { key: sid, sid, name: recentName(old), dir: old.cwd, msgs: [], at: Date.now() }) : null);
-    if (!d) return { ok: false, code: 'noDir' };
+    if (!d) return fail({ ok: false, code: 'noDir' });
     if (s && !company.roleOf(sid)?.title) d.name = s.title || s.name || d.name;   // (someone you hired keeps the name you gave)
-    if (d.running || (d.pending && !b.queued)) return { ok: false, code: 'busy' };
+    if (d.running || (d.pending && !b.queued)) return fail({ ok: false, code: 'busy' });
     if (!b.chain) { d.awaiting = false; d.ask = null; }   // (what you write answers whatever they were waiting for)
     dir = s?.cwd || d.dir;
-    if (!dir || !fs.existsSync(dir)) return { ok: false, code: 'noDir' };
-    if (!b.force) { const over = overBudget(sid, path.basename(dir)); if (over) return { ok: false, code: 'overBudget', over }; }
+    if (!dir || !fs.existsSync(dir)) return fail({ ok: false, code: 'noDir' });
+    if (!b.force) { const over = overBudget(sid, path.basename(dir)); if (over) return fail({ ok: false, code: 'overBudget', over }); }
     role = company.roleOf(sid);
     // Always their own conversation, never a new branch of it (a branch made before carries on: it has what was said).
     // Busy in their window right now: the message waits and goes as soon as they are done (pumpQueue).
     if (busyNow(s) && !b.queued) {
-      d.pending = { text, force: !!b.force, chain: b.chain || null, auto: !!b.auto, at: Date.now() };
-      dmAdd(d, { from: b.chain ? 'handoff' : b.auto ? 'auto' : 'me', text, mode: 'queued' });
+      d.pending = { text, att, attDir, force: !!b.force, chain: b.chain || null, auto: !!b.auto, at: Date.now() };
+      dmAdd(d, { from: b.chain ? 'handoff' : b.auto ? 'auto' : 'me', text, mode: 'queued', ...(shown.length ? { files: shown } : {}) });
       fsp.appendFile(ACTION_LOG, `${new Date().toISOString()} director queued ${sid} ${clip(oneLine(text), 100)}\n`).catch(() => {});
       return { ok: true, key: d.key, queued: true };
     }
@@ -753,12 +763,12 @@ function dmSend(b) {
   }
   // someone hired for the whole workspace keeps every repo of it open to their tools, message after message
   const addDirs = d.ws ? (ws || agentSupport.workspace())?.repos.map((x) => x.dir) || [] : [];
-  const r = tasks.start({ dir, text, images: [], from, system: officeSystem(d.sid, role, { asks: true }), addDirs, extra: runExtra(role) });
-  if (!r.ok) { if (b?.hire) delete dms[d.key]; return { ok: false, code: r.code }; }
+  const r = tasks.start({ dir, text, images: [], attach: att.map((x) => x.path), cleanup: attDir ? [attDir] : [], from, system: officeSystem(d.sid, role, { asks: true }), addDirs, extra: runExtra(role) });
+  if (!r.ok) { if (b?.hire) delete dms[d.key]; return fail({ ok: false, code: r.code }); }
   d.running = r.task.id;
   if (b.chain?.from) dmAdd(d, { from: 'sys', text: tr('director.handoff.received', { from: b.chain.from }) });
   if (b.queued) dmAdd(d, { from: 'sys', text: tr('director.queue.sent') });
-  else dmAdd(d, { from: b.chain ? 'handoff' : b.auto ? 'auto' : 'me', text, mode: b?.hire ? 'hire' : 'direct' });
+  else dmAdd(d, { from: b.chain ? 'handoff' : b.auto ? 'auto' : 'me', text, mode: b?.hire ? 'hire' : 'direct', ...(shown.length ? { files: shown } : {}) });
   fsp.appendFile(ACTION_LOG, `${new Date().toISOString()} director ${b.auto ? 'auto ' : ''}${b.chain ? 'handoff ' : ''}${b?.hire ? `hire in ${dir}` : `${from.fork ? 'branch' : 'carry'} ${from.sid}`} ${clip(oneLine(text), 100)}\n`).catch(() => {});
   return { ok: true, key: d.key };
 }
@@ -825,12 +835,16 @@ function handOver(d, t, result) {
   if (r.ok && fromS && s) broadcast({ k: 'handoff', from: fromS.id, to: s.id });   // (in the office: the file carried over to their desk)
 }
 const dmList = () => Object.values(dms).sort((a, b) => (b.at || 0) - (a.at || 0)).map((d) => ({ ...dmPub(d, 1) }));
+// attachments left behind by a run the server didn't see end (it stopped): swept at start and every hour. One still
+// waiting in a queued message is kept (the queue sends it).
+const sweep = () => sweepAttachments(6, new Set(Object.values(dms).map((d) => d.pending?.attDir).filter(Boolean)));
+sweep(); setInterval(sweep, 3600e3).unref();
 // messages waiting for someone busy in their own window: sent once they are done
 setInterval(() => {
   for (const d of Object.values(dms)) {
     if (!d.pending || d.running || busyNow(liveOf(d.sid))) continue;
     const p = d.pending;
-    const r = dmSend({ sid: d.sid, text: p.text, force: true, chain: p.chain, auto: p.auto, queued: true });
+    const r = dmSend({ sid: d.sid, text: p.text, att: p.att || [], attDir: p.attDir || null, force: true, chain: p.chain, auto: p.auto, queued: true });
     d.pending = null;
     if (!r.ok) dmAdd(d, { from: 'sys', text: tr('director.queue.failed') });
   }
@@ -2269,7 +2283,8 @@ const server = http.createServer((req, res) => {
   if ((url.pathname === '/api/dm' || url.pathname === '/api/dm/stop' || url.pathname === '/api/dm/approve') && req.method === 'POST') {   // a message to one person (from a phone only when the Mac allows giving work)
     if (!authorized(req, url) || !sameOriginOf(req) || !String(req.headers['content-type'] || '').startsWith('application/json')) { json(res, 403, { ok: false }); return; }
     if (!isLoopback(req) && !prefs.get('phoneTasks')) { json(res, 403, { ok: false, code: 'notAllowed', message: tr('chat.task.notAllowed') }); return; }
-    readJson(req, 64_000).then((b) => {
+    readJson(req, url.pathname === '/api/dm' ? 60_000_000 : 64_000).then((b) => {
+      if (!b) { json(res, 413, { ok: false, code: 'fileTooBig', message: tr('chat.task.why.fileTooBig') }); return; }
       if (url.pathname === '/api/dm/stop') { const d = dms[String(b?.key || '')]; json(res, 200, { ok: !!(d?.running && tasks.stop(d.running)) }); return; }
       if (url.pathname === '/api/dm/approve') { const r = dmApprove(String(b?.key || ''), !!b?.ok, b?.note, b?.pick); json(res, r.ok ? 200 : 409, r.ok ? r : { ...r, message: tr(`director.approve.why.${r.code}`) }); return; }
       const r = dmSend({ ...b, auto: false, chain: null });   // (hand-overs and the morning run are the server's own)
@@ -2488,6 +2503,13 @@ const server = http.createServer((req, res) => {
       projects: knownDirs.filter((d) => fs.existsSync(d)).map((d) => ({ dir: tilde(d), name: path.basename(d) })), dms: dmList(),
       workspace: (() => { const w = agentSupport.workspace(); return w ? { root: tilde(w.root), repos: w.repos.map((x) => x.name) } : null; })(),
       perms: Object.keys(PERMS), budgetNow: budgetPub(), terminal: process.platform === 'darwin' || process.platform === 'linux' }));
+    return;
+  }
+  if (url.pathname === '/api/slash') {   // ?key= a person (their project); ?dir= a project to hire into ('@workspace': the whole workspace)
+    const key = String(url.searchParams.get('key') || ''), want = String(url.searchParams.get('dir') || '').replace(/^~(?=$|\/)/, os.homedir());
+    const d = key ? dms[key] : null, live = key ? liveOf(key) : null, old = key ? recent.get(key) : null;
+    const dir = want === '@workspace' ? agentSupport.workspace()?.root : want ? knownDirs.find((x) => x === want) : live?.cwd || d?.dir || old?.cwd;
+    slash.list(dir || null).then((items) => json(res, 200, { items })).catch(() => json(res, 200, { items: [] }));
     return;
   }
   if (url.pathname === '/api/recent') { recentOut({ talked: true }).then((items) => json(res, 200, { items })).catch(() => json(res, 200, { items: [] })); return; }   // the session list's "recent conversations"
@@ -2735,6 +2757,10 @@ function killStaleTunnel() {
 // same cloudflared and the same address (data/tunnel.json) and the phone's link still works. Only the switch stops it.
 const TUNNEL_FILE = path.join(DATA_DIR, 'tunnel.json'), TUNNEL_LOG = path.join(DATA_DIR, 'tunnel.log'), TUNNEL_PORT = Number(process.env.OFFICE_TUNNEL_PORT) || PORT + 7;
 const isCloudflared = (pid) => { try { return process.platform !== 'win32' && /cloudflared/.test(path.basename(execFileSync('ps', ['-o', 'comm=', '-p', String(pid)], { timeout: 4000 }).toString().trim())); } catch { return false; } };
+// Cloudflare over HTTP/2 (TCP), not QUIC (UDP): on some networks QUIC drops the larger packets, so small answers get
+// through and pages (the PIN page, the office) hang. A tunnel left running from before, still on QUIC, is replaced.
+const TUNNEL_ARGS = ['tunnel', '--no-autoupdate', '--protocol', 'http2'];
+const onHttp2 = (pid) => { try { return execFileSync('ps', ['-o', 'command=', '-p', String(pid)], { timeout: 4000 }).toString().includes('--protocol http2'); } catch { return false; } };
 const readJsonFile = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
 async function listenTunnel() {
   if (tunnel.srv) return;
@@ -2765,14 +2791,14 @@ async function startTunnel() {
     await listenTunnel();
     // the one left running before a restart, to the same port: the same address
     const saved = readJsonFile(TUNNEL_FILE);
-    if (saved?.url && saved.port === tunnel.port && saved.pid > 1 && alive(saved.pid) && isCloudflared(saved.pid)) { tunnelUp(saved.pid, saved.url); return; }
+    if (saved?.url && saved.port === tunnel.port && saved.pid > 1 && alive(saved.pid) && isCloudflared(saved.pid) && (process.env.OFFICE_TUNNEL_CMD || onHttp2(saved.pid))) { tunnelUp(saved.pid, saved.url); return; }
     killStaleTunnel();
     const cmd = await cloudflared();
     if (gen !== tunnel.gen || !prefs.get('tunnel')) return;
     tunnel.state = 'starting';
     fs.writeFileSync(TUNNEL_LOG, '');
     const out = fs.openSync(TUNNEL_LOG, 'a');
-    const proc = spawn(cmd, ['tunnel', '--no-autoupdate', '--url', `http://127.0.0.1:${tunnel.port}`], { stdio: ['ignore', out, out], detached: true, windowsHide: true });
+    const proc = spawn(cmd, [...TUNNEL_ARGS, '--url', `http://127.0.0.1:${tunnel.port}`], { stdio: ['ignore', out, out], detached: true, windowsHide: true });
     fs.closeSync(out); proc.unref();
     proc.on('error', (err) => { tunnel.error = String(err.message || err).slice(0, 200); });
     try { fs.writeFileSync(TUNNEL_PID, String(proc.pid)); } catch { /* read-only data */ }

@@ -19,7 +19,8 @@ export function createTasks({ dataDir, claude, env, onStart, onDone, max = 3, pe
   // system: the company's rules and the person's role (server/company.mjs), added to Claude's system prompt for this run
   // addDirs: more folders its tools may use without asking (the agent-support workspace's repos, server/index.mjs)
   // extra: more flags (a permission profile, the office's own hooks for this run: server/index.mjs)
-  function start({ dir, text, images = [], from = null, system = '', addDirs = [], extra = [] }) {
+  // cleanup: files or folders to delete when the run ends (attachments are never kept, server/attach.mjs)
+  function start({ dir, text, images = [], attach = [], cleanup = [], from = null, system = '', addDirs = [], extra = [] }) {
     text = String(text || '').trim().slice(0, MAX_TEXT);
     if (!text) return { ok: false, code: 'empty' };
     if (running.size >= max) return { ok: false, code: 'busy' };
@@ -35,8 +36,12 @@ export function createTasks({ dataDir, claude, env, onStart, onDone, max = 3, pe
       const f = path.join(imgDir, `${id}-${i + 1}.${m[1] === 'jpeg' ? 'jpg' : m[1]}`);
       fs.writeFileSync(f, Buffer.from(m[2], 'base64'), { mode: 0o600 }); files.push(f);
     }
-    // the photos by their paths: Claude Code reads them with its Read tool
-    const prompt = files.length ? `${text}\n\n${files.length > 1 ? 'Attached images' : 'Attached image'} (read ${files.length > 1 ? 'them' : 'it'}):\n${files.join('\n')}` : text;
+    // the photos and attached files by their paths: Claude Code reads them with its Read tool (their folders are added
+    // to what it may read)
+    const att = attach.map(String).filter((f) => path.isAbsolute(f) && fs.existsSync(f)).slice(0, 12);
+    let prompt = files.length ? `${text}\n\n${files.length > 1 ? 'Attached images' : 'Attached image'} (read ${files.length > 1 ? 'them' : 'it'}):\n${files.join('\n')}` : text;
+    if (att.length) prompt += `\n\n${att.length > 1 ? 'Attached files' : 'Attached file'} (read ${att.length > 1 ? 'them' : 'it'} with the Read tool before you start):\n${att.map((f) => `- ${f}`).join('\n')}`;
+    addDirs = [...addDirs, ...new Set([...files, ...att].map((f) => path.dirname(f)))];
     // (from.fork false: carry on that very conversation, one this office started for you, instead of a branch of it)
     // (the conversation to resume goes last: the list flags before it, --allowedTools…, end where it starts)
     const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose',
@@ -45,14 +50,15 @@ export function createTasks({ dataDir, claude, env, onStart, onDone, max = 3, pe
       ...(from?.sid ? ['--resume', from.sid, ...(from.fork === false ? [] : ['--fork-session'])] : [])];
     let proc;
     try { proc = spawn(bin.file, args, { cwd: dir, env: env(), stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32', windowsHide: true }); }
-    catch { return { ok: false, code: 'noClaude' }; }
-    const t = { id, pid: proc.pid, proc, dir, text, at: now, from, sid: null, result: '', error: '', buf: '' };
+    catch { for (const f of files) { try { fs.rmSync(f, { force: true }); } catch { /* gone */ } } return { ok: false, code: 'noClaude' }; }
+    const t = { id, pid: proc.pid, proc, dir, text, at: now, from, sid: null, result: '', error: '', buf: '', temp: [...files, ...cleanup] };
     running.set(id, t); recent.push(now);
     // Done once: when the process exits, or soon after its result if it lingers (an MCP server or a shell it started
     // keeping it alive). A run that answered is finished for the office; what is left of it is stopped a minute later.
     let ended = false, lingerT = 0;
     const finish = () => {
       if (ended) return; ended = true; clearTimeout(lingerT);
+      for (const f of t.temp) { try { fs.rmSync(f, { recursive: true, force: true }); } catch { /* gone */ } }   // (nothing sent is kept)
       running.delete(id);
       onDone?.(t);
     };

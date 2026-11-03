@@ -151,6 +151,7 @@ async function select(key) {
   for (const b of $('dir-plist').querySelectorAll('.dir-person')) b.classList.toggle('is-sel', b.dataset.key === key);
   thread = (co?.dms || []).find((d) => d.key === key) || null; history = [];
   renderThread(); renderPerms();
+  slashList();   // (ready before you type "/")
   await loadThread(key);
 }
 async function loadThread(key) {
@@ -217,6 +218,7 @@ function msgNode(m) {
   if (m.from === 'handoff' || m.from === 'auto') b.append(el('span', 'dir-tag', T(`tag.${m.from}`)));
   if (m.from === 'me' || m.from === 'handoff' || m.from === 'auto') b.append(document.createTextNode(m.text));
   else b.append(mdBlocks(m.text));
+  if (m.files?.length) b.append(filesNode(m.files));
   const meta = el('div', 'dir-meta');
   const d = new Date(m.at); meta.append(el('span', null, `${pad2(d.getHours())}:${pad2(d.getMinutes())}`));
   if (m.from === 'me' && m.mode) meta.append(el('span', null, T(`mode.${m.mode}`)));
@@ -235,6 +237,7 @@ function renderThread() {
   const box = $('dir-msgs'), text = $('dir-text'), send = $('dir-send');
   const can = !!(hiring || sel);
   text.disabled = send.disabled = !can || !!thread?.running || !!thread?.queued;
+  $('dir-attach').disabled = text.disabled;
   $('dir-stop').hidden = !thread?.running;
   renderAsk();
   if (hiring) {
@@ -256,7 +259,7 @@ function renderThread() {
 }
 async function sendNow(e) {
   e?.preventDefault();
-  const text = $('dir-text').value.trim(); if (!text) return;
+  const text = $('dir-text').value.trim(); if (!text && !attached.length) return;
   if (DEMO) { toast(T('demo')); return; }
   let body;
   if (hiring) {
@@ -266,13 +269,18 @@ async function sendNow(e) {
   } else body = { sid: sel, text };
   if (forceArmed) body.force = true;
   $('dir-send').disabled = true;
+  if (attached.length) {   // the files, read in this page and sent with the message
+    $('dir-mode').textContent = T('attach.reading');
+    try { body.files = await Promise.all(attached.map(async (a) => ({ name: a.file.name, data: await readAsData(a.file) }))); }
+    catch { toast(T('failed')); $('dir-send').disabled = false; return; }
+  }
   const r = await postJ('/api/dm', body);
   if (!r.ok && r.code === 'overBudget') {   // past the budget: say so, and the next press sends it anyway
     forceArmed = true; $('dir-mode').textContent = r.message; $('dir-send').lastChild.textContent = T('budget.sendAnyway'); $('dir-send').disabled = false; return;
   }
   forceArmed = false; $('dir-send').lastChild.textContent = T('send');
   if (!r.ok) { toast(r.message || T('failed')); $('dir-send').disabled = false; return; }
-  $('dir-text').value = '';
+  $('dir-text').value = ''; clearAtt();
   if (hiring) { hiring = false; $('dir-hire').hidden = true; for (const id of ['dir-hire-title', 'dir-hire-brief']) $(id).value = ''; }
   if (r.queued) toast(T('queue.toast'), 6000);
   sel = r.key;
@@ -288,9 +296,101 @@ function startHire() {
   pick.replaceChildren(...ws, ...(co?.projects || []).map((p) => { const o = el('option', null, `${p.name} — ${p.dir}`); o.value = p.dir; return o; }));
   if (!pick.options.length) { const o = el('option', null, T('hire.noProjects')); o.value = ''; pick.append(o); }
   permSelect($('dir-hire-perm'), 'auto'); nextSelect($('dir-hire-next'));
-  $('dir-hire').hidden = false; showConvo(true);
+  $('dir-hire').hidden = false; showConvo(true); slashList();
   renderThread();
   $('dir-hire-title').focus();
+}
+
+/* ---------- files with a message: the clip button, a paste (⌘/Ctrl+V of an image), or dropped on the conversation ----------
+   They wait under the box until you send; then they go with the message and the server hands them to Claude by path,
+   keeping nothing once the work is done (server/attach.mjs). The conversation shows their names and sizes. */
+const MAX_FILES = 8, MAX_FILE = 15 * 1024 * 1024, MAX_TOTAL = 40 * 1024 * 1024;
+let attached = [];   // [{ file, url }] (url: an image's preview, in this page only)
+const fmtSize = (n) => (n >= 1048576 ? `${num(n / 1048576, 1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+function addFiles(list) {
+  for (const f of list) {
+    if (attached.length >= MAX_FILES) { toast(T('attach.tooMany')); break; }
+    if (f.size > MAX_FILE) { toast(T('attach.tooBig', { name: f.name })); continue; }
+    if (attached.reduce((n, x) => n + x.file.size, 0) + f.size > MAX_TOTAL) { toast(T('attach.total')); break; }
+    attached.push({ file: f, url: /^image\/(png|jpeg|gif|webp)$/.test(f.type) ? URL.createObjectURL(f) : '' });
+  }
+  renderAtt();
+}
+function renderAtt() {
+  const box = $('dir-att'); if (!box) return;
+  box.hidden = !attached.length;
+  box.replaceChildren(...attached.map((a, i) => {
+    const c = el('span', 'dir-att-chip');
+    if (a.url) { const im = el('img'); im.src = a.url; im.alt = ''; c.append(im); } else c.append(icon('file'));
+    c.append(el('span', 'dir-att-name', short(a.file.name, 34)), el('small', null, fmtSize(a.file.size)));
+    const x = el('button', 'dir-att-x'); x.type = 'button'; x.setAttribute('aria-label', T('attach.remove')); x.title = T('attach.remove'); x.append(icon('x'));
+    x.addEventListener('click', () => { if (a.url) URL.revokeObjectURL(a.url); attached.splice(i, 1); renderAtt(); });
+    c.append(x);
+    return c;
+  }));
+}
+function clearAtt() { for (const a of attached) if (a.url) URL.revokeObjectURL(a.url); attached = []; renderAtt(); }
+const readAsData = (f) => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => no(r.error); r.readAsDataURL(f); });
+// the names and sizes of the files a message carried (nothing else is kept)
+function filesNode(files) {
+  const box = el('div', 'dir-files');
+  for (const f of files) { const c = el('span', 'dir-file'); c.append(icon(/^image\//.test(f.type || '') ? 'image' : 'file'), el('span', null, short(f.name, 40)), el('small', null, fmtSize(f.size || 0))); box.append(c); }
+  return box;
+}
+
+/* ---------- "/": the skills and commands their Claude Code offers, as when you type "/" in Claude Code ----------
+   Typed at the very start of the message: the list opens above the box and narrows as you type (names first, then
+   descriptions). Arrows and Enter or Tab pick, Escape closes; a tap picks on a phone. Picking writes "/name " and
+   leaves the rest of what you wrote. The list comes from the person's project (server/slash.mjs). */
+let slashFor = '', slashItems = [], slashShown = [], slashAt = 0, slashBusy = null;
+const slashBox = () => $('dir-slash');
+// what follows "/" when the caret is still in the first word of a message that starts with "/"; else null
+function slashQuery() { const t = $('dir-text'); const m = /^\/(\S*)$/.exec(t.value.slice(0, t.selectionStart ?? t.value.length)); return m ? m[1].toLowerCase() : null; }
+async function slashList() {
+  const q = hiring ? `dir=${encodeURIComponent($('dir-hire-dir')?.value || '')}` : `key=${encodeURIComponent(sel || '')}`;
+  if (q !== slashFor) { slashFor = q; slashBusy = getJ(`/api/slash?${q}`).then((r) => { if (slashFor === q) slashItems = r?.items || []; return slashItems; }); }
+  return slashBusy || slashItems;
+}
+function slashClose() { const b = slashBox(); if (b) b.hidden = true; slashShown = []; }
+async function slashUpdate() {
+  const q = slashQuery(), box = slashBox();
+  if (q == null || DEMO || !box) { slashClose(); return; }
+  const all = await slashList();
+  if (slashQuery() !== q) return;
+  const head = all.filter((x) => x.name.toLowerCase().startsWith(q));
+  const rest = q ? all.filter((x) => !head.includes(x) && (x.name.toLowerCase().includes(q) || x.desc.toLowerCase().includes(q))) : [];
+  slashShown = [...head, ...rest].slice(0, 50); slashAt = 0;
+  if (!slashShown.length) { box.replaceChildren(el('p', 'dir-sl-none', T('slash.none'))); box.hidden = false; return; }
+  box.replaceChildren(...slashShown.map((x, i) => {
+    const b = el('button', 'dir-sl-row'); b.type = 'button'; b.setAttribute('role', 'option'); b.dataset.i = i;
+    const top = el('span', 'dir-sl-top'); top.append(el('b', null, `/${x.name}`));
+    if (x.hint) top.append(el('i', null, x.hint));
+    top.append(el('small', 'dir-sl-src', T(`slash.${x.src}`)));
+    b.append(top);
+    if (x.desc) b.append(el('span', 'dir-sl-desc', x.desc));
+    b.addEventListener('mousedown', (e) => e.preventDefault());   // (the box keeps the focus and the caret)
+    b.addEventListener('click', () => slashPick(i));
+    return b;
+  }));
+  box.hidden = false; slashMark();
+}
+function slashMark() {
+  const rows = slashBox()?.querySelectorAll('.dir-sl-row') || [];
+  rows.forEach((r, i) => { const on = i === slashAt; r.classList.toggle('is-on', on); r.setAttribute('aria-selected', String(on)); if (on) r.scrollIntoView({ block: 'nearest' }); });
+}
+function slashPick(i) {
+  const x = slashShown[i]; if (!x) return;
+  const t = $('dir-text'), end = t.selectionStart ?? t.value.length, after = t.value.slice(end).replace(/^\S*/, '').replace(/^\s*/, '');
+  t.value = `/${x.name} ${after}`;
+  const caret = x.name.length + 2; t.setSelectionRange(caret, caret); t.focus();
+  slashClose();
+  t.dispatchEvent(new Event('input', { bubbles: true }));
+}
+function slashKeys(e) {
+  const box = slashBox(); if (!box || box.hidden || !slashShown.length) { if (e.key === 'Escape' && box && !box.hidden) { slashClose(); e.stopPropagation(); e.preventDefault(); } return; }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { slashAt = (slashAt + (e.key === 'ArrowDown' ? 1 : -1) + slashShown.length) % slashShown.length; slashMark(); e.preventDefault(); }
+  else if ((e.key === 'Enter' && !e.metaKey && !e.ctrlKey && !e.shiftKey) || e.key === 'Tab') { slashPick(slashAt); e.preventDefault(); e.stopPropagation(); }
+  else if (e.key === 'Escape') { slashClose(); e.preventDefault(); e.stopPropagation(); }
 }
 
 /* ---------- the performance board ---------- */
@@ -597,7 +697,18 @@ export function setup() {
   for (const b of modal.querySelectorAll('.dir-tab')) b.addEventListener('click', () => showTab(b.dataset.tab));
   $('dir-input').addEventListener('submit', sendNow);
   window.visualViewport?.addEventListener('resize', fitKeyboard); window.visualViewport?.addEventListener('scroll', fitKeyboard);
-  $('dir-text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) sendNow(e); });
+  $('dir-attach').addEventListener('click', () => $('dir-file').click());
+  $('dir-file').addEventListener('change', (e) => { addFiles([...e.target.files]); e.target.value = ''; });
+  $('dir-text').addEventListener('paste', (e) => { const fs = [...(e.clipboardData?.files || [])]; if (!fs.length || $('dir-text').disabled) return; addFiles(fs); if (!e.clipboardData.getData('text')) e.preventDefault(); });
+  const convo = modal.querySelector('.dir-convo');
+  convo.addEventListener('dragover', (e) => { if (![...(e.dataTransfer?.types || [])].includes('Files') || $('dir-text').disabled) return; e.preventDefault(); convo.classList.add('is-drop'); });
+  convo.addEventListener('dragleave', (e) => { if (!convo.contains(e.relatedTarget)) convo.classList.remove('is-drop'); });
+  convo.addEventListener('drop', (e) => { convo.classList.remove('is-drop'); if (!e.dataTransfer?.files?.length || $('dir-text').disabled) return; e.preventDefault(); addFiles([...e.dataTransfer.files]); });
+  $('dir-text').addEventListener('keydown', slashKeys);
+  $('dir-text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { slashClose(); sendNow(e); } });
+  $('dir-text').addEventListener('input', slashUpdate);
+  $('dir-text').addEventListener('click', slashUpdate);
+  $('dir-text').addEventListener('blur', () => setTimeout(slashClose, 150));
   $('dir-stop').addEventListener('click', () => { if (thread?.key) postJ('/api/dm/stop', { key: thread.key }); });
   $('dir-hire-btn').addEventListener('click', startHire);
   for (const b of $('dir-days').querySelectorAll('button')) b.addEventListener('click', () => { perfDays = Number(b.dataset.days); loadPerf(); });
