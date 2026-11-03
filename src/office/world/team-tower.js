@@ -15,7 +15,7 @@ import { DEPTS, WING } from './layout.js';
 import { applyChibiPose, chibiPose, makeChibi } from '../people/chibi-rig.js';
 import { PALETTE, hash } from '../people/workers.js';
 import { fitText } from '../scene/blocks.js';
-import { FLOOR_H, TOWER_Y0, floorY, floorsOf, seatPeople, silhouettes, stateOf } from '../../shared/team-floors.js';
+import { FLOOR_H, TOWER_Y0, floorY, floorsOf, seatPeople, seesIn, silhouettes, stateOf } from '../../shared/team-floors.js';
 import { t as tr } from '../../i18n/index.js';
 
 const X0 = -8, X1 = 14, Z0 = WING.z0, Z1 = WING.z1, CX = (X0 + X1) / 2, CZ = (Z0 + Z1) / 2;
@@ -94,6 +94,7 @@ function canvasPlate(w, h) {
 }
 const shirtOf = (mid, pid) => PALETTE[hash(`${mid}/${pid}`) % PALETTE.length];
 const accentOf = (mid) => PALETTE[hash(mid) % PALETTE.length];
+const stText = (st) => tr(st === 'open' ? 'team.roomOpen' : st === 'shared' ? 'team.roomShared' : st === 'closed' ? 'team.roomClosed' : 'team.offline');
 
 /* ---------- one floor ---------- */
 function buildFloor(f) {
@@ -221,11 +222,11 @@ function fillFloor(F) {
     R.tagEl.replaceChildren();
     if (r) {
       const dot = el('i'); dot.style.background = accentOf(r.member.id);
-      R.tagEl.append(dot, el('b', null, r.member.name), el('span', `tw-st is-${st}`, st === 'open' ? tr('team.roomOpen') : st === 'closed' ? tr('team.roomClosed') : tr('team.offline')));
-      if (st === 'open' && R.extra) R.tagEl.append(el('span', 'tw-more', `+${R.extra}`));
+      R.tagEl.append(dot, el('b', null, r.member.name), el('span', `tw-st is-${st}`, stText(st)));
+      if (seesIn(st) && R.extra) R.tagEl.append(el('span', 'tw-more', `+${R.extra}`));
     }
-    // screens: what the person at each desk is doing; people at desks in open rooms, shadows behind closed glass
-    const seats = r && st === 'open' ? seatsOf.get(r.member.id) || new Map() : new Map();
+    // screens: what the person at each desk is doing; people at desks in rooms you can see into, shadows behind closed glass
+    const seats = r && seesIn(st) ? seatsOf.get(r.member.id) || new Map() : new Map();
     const bySeat = new Map(); for (const p of (r?.people || [])) { const k = seats.get(p.id); if (k !== undefined) bySeat.set(k, p); }
     const shadows = st === 'closed' ? silhouettes(r) : 0;
     DESKS[R.i].forEach((dk, k) => {
@@ -262,8 +263,8 @@ function drawDirectory(F) {
     const st = stateOf(r);
     g.fillStyle = accentOf(r.member.id); g.fillRect(28, y - 18, 8, 36);
     g.fillStyle = st === 'offline' ? '#8A93A0' : '#F3EFE8'; g.font = `700 32px ${FONT}`; fitText(g, r.member.name, 300); g.fillText(r.member.name, 50, y);
-    g.font = `600 24px ${FONT}`; g.fillStyle = st === 'open' ? '#7FD69A' : st === 'closed' ? '#C9D1DB' : '#7A828E';
-    const s = st === 'open' ? tr('team.roomOpen') : st === 'closed' ? tr('team.roomClosed') : tr('team.offline');
+    g.font = `600 24px ${FONT}`; g.fillStyle = st === 'open' ? '#7FD69A' : st === 'shared' ? '#9CC8F0' : st === 'closed' ? '#C9D1DB' : '#7A828E';
+    const s = stText(st);
     g.textAlign = 'right'; g.fillText(s, 484, y); g.textAlign = 'left';
   });
   tex.needsUpdate = true;
@@ -283,7 +284,7 @@ export function syncTower(t) {
     const F = floors[f.n - 1];
     F.rooms.forEach((R, i) => {
       const r = f.rooms[i] || null; R.room = r;
-      if (r && stateOf(r) === 'open') { const s = seatPeople(r.people, seatsOf.get(r.member.id)); seatsOf.set(r.member.id, s.seats); R.extra = s.extra; } else R.extra = 0;
+      if (r && seesIn(stateOf(r))) { const s = seatPeople(r.people, seatsOf.get(r.member.id)); seatsOf.set(r.member.id, s.seats); R.extra = s.extra; } else R.extra = 0;
     });
     fillFloor(F);
   }
@@ -303,7 +304,7 @@ const ANIM = { work: 'type', wait: 'hand', rest: 'coffee' };
 function syncChars() {
   const want = new Map(), F = view.mode === 'floor' ? floors[view.floor - 1] : null;
   if (F) for (const R of F.rooms) {
-    const r = R.room; if (!r || stateOf(r) !== 'open') continue;
+    const r = R.room; if (!r || !seesIn(stateOf(r))) continue;
     const seats = seatsOf.get(r.member.id) || new Map();
     for (const p of r.people || []) { const k = seats.get(p.id); if (k !== undefined) want.set(`${r.member.id}/${p.id}`, { R, r, p, k }); }
   }

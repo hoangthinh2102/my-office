@@ -99,7 +99,7 @@ engine switches to demo mode and talks to no API.
 | `core/optimize.js` | 141 | Merging static meshes into fewer draw calls, then starting. |
 | `core/schedule.js` | 36 | Office hours, set by the director (the director's office → Office hours; kept by the server, server/company.mjs) and lived by everyone: arriving in the morning, breakfast at the pantry until work starts, lunch, the midday nap, the afternoon coffee, packing up and going home when work ends. |
 | `core/state.js` | 3 | Values that more than one module assigns (the clock, the selection, mode switches…), on one shared object so any module can change them. |
-| `demo/demo-team.js` | 44 | Demo mode's team (team mode's building, ui/team.js): nine pretend teammates on three floors, some rooms open, some closed, one person offline, and work going on in the open rooms. |
+| `demo/demo-team.js` | 81 | Demo mode's team (team mode's building, ui/team.js): nine pretend teammates on three floors, some rooms open, some closed (Vy has let you into hers for a while), one person offline, someone knocking on your door, and work going on in the rooms you can see. |
 | `demo/demo.js` | 294 | Demo mode: fictional projects and a fictional Mac. |
 | `interact/first-person.js` | 261 | First person: walk the office as your own character, and (with the city outside) down the lift and out on the street: the pavements, the zebras (the traffic stops for you), the shops, the bánh mì cart. |
 | `interact/place-cards.js` | 201 | Place cards: what happens at each place. |
@@ -170,8 +170,9 @@ engine switches to demo mode and talks to no API.
 | `ui/session-drawer.js` | 431 | The session drawer: chat, steps, subagents. |
 | `ui/settings.js` | 127 | Settings popover: backdrop, floor plan, look, time, toggles. |
 | `ui/task-sheet.js` | 98 | "Giao việc": giving Claude work from the group chat (server/tasks.mjs runs it on the Mac). |
-| `ui/team-lift.js` | 121 | Team mode's lift (headquarters plan only; markup: src/components/office/Stage.tsx #tw-lift, #tw-card): the buttons down the stage's right edge that choose what you look at in the building (world/team-tower.js): the whole building, a floor, or your own floor. |
-| `ui/team.js` | 153 | Team mode's building (the building button in the top bar; markup: src/components/office/TeamModal.tsx): your own room, which you can open, close or pause from this computer, and everyone else's rooms floor by floor, view only. |
+| `ui/team-access.js` | 150 | Team mode's closed rooms (docs/features/team-mode.md, step 4): knocking on someone's closed door, answering knocks on yours (an hour, the rest of the day, always, or no), who may look in and taking that back, one-time view codes, and your room's access log. |
+| `ui/team-lift.js` | 123 | Team mode's lift (headquarters plan only; markup: src/components/office/Stage.tsx #tw-lift, #tw-card): the buttons down the stage's right edge that choose what you look at in the building (world/team-tower.js): the whole building, a floor, or your own floor. |
+| `ui/team.js` | 152 | Team mode's building (the building button in the top bar; markup: src/components/office/TeamModal.tsx): your own room, which you can open, close or pause from this computer, and everyone else's rooms floor by floor, view only. |
 | `ui/timelapse.js` | 156 | A 15-second clip of the office to share: square (1080 × 1080) for a feed or vertical (1080 × 1920) for Reels, TikTok and Shorts, the camera turning slowly round the floor, people at four times their pace, the day running into the evening (a clock in the corner from 8:00 to 23:00, the lights coming on at six), a title at the start and the day's numbers over the last two and a half seconds, with an original lo-fi tune under it (clip-music.js; it can be turned off). |
 | `ui/tips.js` | 115 | The first visit: a short tour of what you can click. |
 | `ui/topbar.js` | 217 | Phone modal, notifications, the night switch. |
@@ -235,6 +236,6 @@ engine switches to demo mode and talks to no API.
 | `world/props/vacuum.js` | 33 | The robot vacuum. |
 | `world/room-update.js` | 176 | Room lights, particles, the rocket, the clock and day / night. |
 | `world/screens.js` | 100 | What each desk's screens show: the editor while it edits, a terminal for commands, a browser for the web, code with the match highlighted while it reads or searches, a chat while it thinks, a permission dialog while it waits for you, a screensaver while it naps. |
-| `world/team-tower.js` | 422 | Team mode's building in 3D (headquarters plan only; docs/features/team-mode.md): every other member's room on a floor above the wing, four to a floor (src/shared/team-floors.js), the team's lift at the back. |
+| `world/team-tower.js` | 423 | Team mode's building in 3D (headquarters plan only; docs/features/team-mode.md): every other member's room on a floor above the wing, four to a floor (src/shared/team-floors.js), the team's lift at the back. |
 | `world/terrace.js` | 114 | The terrace around the office: tiles, glass railing, bollards, planters, potted plants, seating. |
 | `world/windows.js` | 96 | Windows on the outer walls and the views they show. |

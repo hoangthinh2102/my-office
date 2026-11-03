@@ -13,7 +13,7 @@ const whose = (ws) => { try { return ws.deserializeAttachment()?.m || null; } ca
 export class Team extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
-    this.core = new TeamCore(ctx.storage.sql);
+    this.core = new TeamCore(ctx.storage.sql, { online: (id) => this.online(id) });
   }
 
   async fetch(request) {
@@ -30,7 +30,19 @@ export class Team extends DurableObject {
     });
     if (out.left) this.drop(out.left);
     if (out.policy) this.sendAll({ t: 'policy', policy: out.policy });
+    this.deliver(out.send);
+    if (out.alarm) await this.schedule();
     return json(out.status, out.body);
+  }
+
+  /* ---------- grants running out (step 4) ---------- */
+  async schedule() {
+    const next = this.core.nextExpiry();
+    if (next) await this.ctx.storage.setAlarm(next); else await this.ctx.storage.deleteAlarm();
+  }
+  async alarm() {
+    this.deliver(this.core.expire());
+    await this.schedule();
   }
 
   /* ---------- sockets ---------- */
@@ -47,10 +59,17 @@ export class Team extends DurableObject {
     server.serializeAttachment({ m: m.id });
     for (const o of old) { try { o.close(4000, 'replaced'); } catch { /* already closed */ } }
     server.send(JSON.stringify(this.core.hello(m.id, (id) => this.online(id))));
-    if (!old.some((o) => o.readyState === OPEN)) this.sendAll(this.core.presenceOut(m.id, true), m.id);
+    if (!old.some((o) => o.readyState === OPEN)) this.deliver(this.core.presenceOut(m.id, true));
     return new Response(null, { status: 101, webSocket: client });
   }
   online(id, except = null) { return this.ctx.getWebSockets(id).some((ws) => ws !== except && ws.readyState === OPEN); }
+  // [{ to: member id, msg }]: each to that member's socket
+  deliver(list) {
+    for (const { to, msg } of list || []) {
+      const text = JSON.stringify(msg);
+      for (const ws of this.ctx.getWebSockets(to)) { if (ws.readyState !== OPEN) continue; try { ws.send(text); } catch { /* closing */ } }
+    }
+  }
   sendAll(msg, except = null) {
     if (!msg) return;
     const text = JSON.stringify(msg);
@@ -68,7 +87,7 @@ export class Team extends DurableObject {
   async webSocketMessage(ws, message) {
     const m = whose(ws);
     if (!m || typeof message !== 'string') return;
-    for (const out of this.core.ingest(m, message)) this.sendAll(out, m);
+    this.deliver(this.core.ingest(m, message));
   }
   async webSocketClose(ws, code) {
     try { ws.close(code === 1005 || code === 1006 ? 1000 : code, 'bye'); } catch { /* already closed */ }
@@ -77,6 +96,6 @@ export class Team extends DurableObject {
   async webSocketError(ws) { this.gone(ws); }
   gone(ws) {
     const m = whose(ws);
-    if (m && !this.online(m, ws)) this.sendAll(this.core.presenceOut(m, false), m);
+    if (m && !this.online(m, ws)) this.deliver(this.core.presenceOut(m, false));
   }
 }

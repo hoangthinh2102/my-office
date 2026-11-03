@@ -86,6 +86,7 @@ import * as uiWrapped from './ui/wrapped.js';
 import * as uiDirector from './ui/director.js';
 import * as uiTeam from './ui/team.js';
 import * as uiTeamLift from './ui/team-lift.js';
+import * as uiTeamAccess from './ui/team-access.js';
 import * as worldTeamTower from './world/team-tower.js';
 import * as uiRecentRail from './ui/recent-rail.js';
 import * as uiPhoto from './ui/photo.js';
@@ -198,6 +199,7 @@ const MODULES = [
   uiTeam,
   worldTeamTower,
   uiTeamLift,
+  uiTeamAccess,
   uiPhoto,
   uiTimelapse,
   uiGroupChat,

@@ -2,6 +2,9 @@
 // computer's room, cut down to what its mode allows (shared/team-protocol.js roomView), at most every 1.5 s and only
 // when it changed; down come everyone else's rooms, kept here for the page (GET /api/team).
 //
+// A closed room sends only counts, unless its owner let someone in (a knock answered, a view code used): then it sends
+// its people too, and the hub passes them on only to those let in (hub/src/core.js).
+//
 // It runs only while this computer is in a team (data/team.json) and not paused; it re-reads that file when it changes
 // (my-office team room / pause / resume / leave), so those take effect without a restart.
 import crypto from 'node:crypto';
@@ -12,6 +15,7 @@ import { loadKeys } from './identity.mjs';
 
 const BACKOFF = [2_000, 5_000, 10_000, 30_000, 60_000];
 const EVENTS_KEEP = 50;
+const ANSWER_KEEP_MS = 10 * 60_000;   // how long the page shows "refused" / "ended" on a room you knocked on
 
 /**
  * dataDir: the office's data folder; sessions(): the server's public session views (pub());
@@ -25,6 +29,11 @@ export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => 
   let team = null, ws = null, retry = 0, retryTimer = null, batchTimer = null, beatTimer = null, stopped = true;
   let dirty = false, lastSent = '', events = [], policy = { details: false }, me = null, connected = false, why = '';
   const rooms = new Map();   // member id -> room as the hub sent it
+  // closed rooms: who may see mine (grants), who is knocking on mine (knocks), rooms I knocked on (asks),
+  // and the last answer about rooms I asked to see (answers: room -> { state, until, at })
+  let grants = [], knocks = [];
+  const asks = new Map(), answers = new Map();
+  const sharing = () => grants.some((g) => g.until == null || g.until > now());
   let changeTimer = null;
   const changed = () => {
     if (changeTimer) return;
@@ -33,7 +42,8 @@ export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => 
 
   const readTeam = () => { try { return JSON.parse(fs.readFileSync(STATE, 'utf8')); } catch { return null; } };
   const mode = () => (team?.room?.mode === 'open' ? 'open' : 'closed');
-  const view = () => roomView(sessions(), { mode: mode(), details: policy.details, idOf, redact });
+  const view = () => roomView(sessions(), { mode: mode(), details: policy.details, idOf, redact, share: sharing() });
+  const eventsGo = () => mode() === 'open' || sharing();
   const send = (msg) => { if (ws && connected) { try { ws.send(JSON.stringify(msg)); } catch { /* closing */ } } };
 
   function flush(force = false) {
@@ -45,7 +55,7 @@ export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => 
     }
     if (events.length) {
       const list = events.splice(0);
-      if (mode() === 'open') send({ t: 'ev', list });
+      if (eventsGo()) send({ t: 'ev', list });
     }
   }
 
@@ -66,7 +76,7 @@ export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => 
       sock.addEventListener('message', (m) => { if (ws === sock) onMessage(m.data); });
       sock.addEventListener('close', (c) => {
         if (ws !== sock) return;
-        ws = null; connected = false; rooms.clear(); changed();   // (what we knew is stale until the hub says hello again)
+        ws = null; connected = false; forgetHub(); changed();   // (what we knew is stale until the hub says hello again)
         if (c.code === 4001) { why = 'not-member'; log('team: the hub no longer knows this computer as a member'); return; }
         if (c.code === 4000) return;   // (replaced by a newer socket of ours: nothing to do)
         why = 'reconnecting';
@@ -82,9 +92,12 @@ export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => 
   }
   function disconnect() {
     clearTimeout(retryTimer); retryTimer = null;
-    const s = ws; ws = null; connected = false; rooms.clear(); changed();
+    const s = ws; ws = null; connected = false; forgetHub(); changed();
     try { s?.close(1000, 'bye'); } catch { /* closed */ }
   }
+
+  function forgetHub() { rooms.clear(); grants = []; knocks = []; asks.clear(); }
+  const listOf = (x) => (Array.isArray(x) ? x.filter((g) => g?.viewer?.id) : []);
 
   function onMessage(data) {
     let msg; try { msg = JSON.parse(String(data)); } catch { return; }
@@ -92,10 +105,19 @@ export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => 
     if (msg.t === 'hello') {
       me = msg.me || null; policy = { details: !!msg.policy?.details };
       rooms.clear(); for (const r of msg.rooms || []) if (r?.member?.id) rooms.set(r.member.id, r);
+      grants = listOf(msg.grants); knocks = listOf(msg.knocks);
+      asks.clear(); for (const a of msg.asks || []) if (a?.room) asks.set(a.room, a.at);
       flush(true);
     } else if (msg.t === 'room' && msg.room?.member?.id) rooms.set(msg.room.member.id, msg.room);
     else if (msg.t === 'gone' && msg.member) rooms.delete(msg.member);
     else if (msg.t === 'policy') { policy = { details: !!msg.policy?.details }; dirty = true; }
+    else if (msg.t === 'grants') { grants = listOf(msg.list); dirty = true; }   // (sharing may start or stop)
+    else if (msg.t === 'knocks') knocks = listOf(msg.list);
+    else if (msg.t === 'knock' && msg.knock?.viewer?.name) log(`team: ${msg.knock.viewer.name} asks to see your room`);
+    else if (msg.t === 'access' && msg.room) {
+      asks.delete(msg.room);
+      answers.set(msg.room, { state: String(msg.state || ''), until: msg.until ?? null, at: now() });
+    }
     else if (msg.t === 'ev' && msg.member && rooms.has(msg.member)) {
       const r = rooms.get(msg.member);
       r.events = [...(r.events || []), ...(msg.list || [])].slice(-EVENTS_KEEP);
@@ -131,11 +153,18 @@ export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => 
       if (obj.k === 'sess' || obj.k === 'gone' || obj.k === 'snap') dirty = true;
       if (obj.k === 'ev' && obj.e) {
         dirty = true;
-        if (mode() === 'open' && events.length < EVENTS_KEEP) events.push(eventView(obj.e, { details: policy.details, idOf, redact }));
+        if (eventsGo() && events.length < EVENTS_KEEP) events.push(eventView(obj.e, { details: policy.details, idOf, redact }));
       }
     },
     /** The team's setting as the hub just answered it (the hub's own 'policy' message follows a moment later). */
     setPolicy(p) { policy = { details: !!p?.details }; dirty = true; changed(); },
+    /** What the hub just answered to a call about closed rooms (its own messages follow a moment later). */
+    setAccess({ grants: g, knocks: k, asked } = {}) {
+      if (g) { grants = listOf(g); dirty = true; }
+      if (k) knocks = listOf(k);
+      if (asked) { asks.set(asked, now()); answers.delete(asked); }
+      changed();
+    },
     /** For GET /api/team and `my-office team rooms`. */
     state() {
       return {
@@ -143,6 +172,9 @@ export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => 
         me: me || (team ? { id: team.memberId, name: team.name } : null),
         room: team ? { mode: mode(), paused: !!team.paused } : null,
         connected, problem: why || null, policy, rooms: [...rooms.values()],
+        grants: grants.filter((g) => g.until == null || g.until > now()), knocks,
+        asks: [...asks].map(([room, at]) => ({ room, at })),
+        answers: [...answers].filter(([, a]) => now() - a.at < ANSWER_KEEP_MS).map(([room, a]) => ({ room, ...a })),
       };
     },
     // (for the tests)

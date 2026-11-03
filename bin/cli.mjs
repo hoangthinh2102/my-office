@@ -187,7 +187,8 @@ function start() {
 /* ---------- team mode (docs/features/team-mode.md) ----------
    my-office team create --hub <url> --name <team> [--me <your name>] [--token <hub's create token>]
    my-office team invite | join <invite link> [--me <name>] | status | leave [--local] | restore <recovery key>
-   my-office team room open|closed | pause | resume | rooms | policy details on|off */
+   my-office team room open|closed | pause | resume | rooms | policy details on|off
+   my-office team grants | revoke <name> | code | redeem <code>   (closed rooms: who may look in, view codes) */
 async function team() {
   const { createTeamClient, TeamError } = await import('../server/team/client.mjs');
   const client = createTeamClient({ dataDir: DATA_DIR });
@@ -247,6 +248,29 @@ async function team() {
         console.log(`  ${r.online ? '●' : '○'} ${head}${r.online ? ` · ${tr('cli.team.counts', { work: c.work || 0, wait: c.wait || 0, rest: c.rest || 0 })}` : ''}`);
         for (const p of r.people || []) console.log(`      - ${[p.role, p.project].filter(Boolean).join(' · ') || '—'}: ${tr(`cli.team.status.${p.status}`)}${p.act ? ` (${p.act}${p.label ? `: ${p.label}` : ''})` : ''}`);
       }
+    } else if (sub === 'grants') {
+      const a = await client.access();
+      const when = (ms) => (ms == null ? tr('cli.team.always') : tr('cli.team.untilTime', { time: until(ms) }));
+      console.log(tr('cli.team.grantsTitle'));
+      if (!a.grants.length) console.log(`  ${tr('cli.team.noGrants')}`);
+      for (const g of a.grants) console.log(`  · ${g.viewer.name} (${when(g.until)})`);
+      if (a.knocks.length) console.log(`\n${tr('cli.team.knocksTitle')}`);
+      for (const k of a.knocks) console.log(`  · ${k.viewer.name} (${until(k.at)})`);
+      if (a.log.length) console.log(`\n${tr('cli.team.logTitle')}`);
+      for (const l of a.log.slice(0, 10)) console.log(`  ${until(l.at)}  ${tr(`cli.team.log.${l.action}`, { name: l.viewer?.name || '—' })}`);
+    } else if (sub === 'revoke') {
+      if (!arg) { console.log(tr('cli.team.usage')); process.exitCode = 1; return; }
+      const g = (await client.access()).grants.filter((x) => x.viewer.name.toLowerCase() === arg.toLowerCase());
+      if (g.length !== 1) { bad(tr(g.length ? 'cli.team.nameTwice' : 'cli.team.noSuchGrant', { name: arg })); process.exitCode = 1; return; }
+      await client.revoke(g[0].viewer.id);
+      ok(tr('cli.team.revoked', { name: g[0].viewer.name }));
+    } else if (sub === 'code') {
+      const r = await client.viewCode();
+      console.log(`\n  ${tr('cli.team.codeTitle', { time: until(r.expiresAt) })}\n\n    ${r.code}\n\n  ${tr('cli.team.codeHow')}\n`);
+    } else if (sub === 'redeem') {
+      if (!arg) { console.log(tr('cli.team.usage')); process.exitCode = 1; return; }
+      const r = await client.redeem(arg);
+      ok(tr(r.until == null ? 'cli.team.redeemedAlways' : 'cli.team.redeemed', { name: r.room.name, time: r.until == null ? '' : until(r.until) }));
     } else if (sub === 'leave') {
       await client.leave({ local: args.includes('--local') });
       ok(tr('cli.team.left'));

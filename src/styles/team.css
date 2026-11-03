@@ -125,3 +125,54 @@
 .tw-hint-x { all: unset; cursor: pointer; font-size: 1.1rem; line-height: 1; opacity: .85; padding: 0 2px; }
 .tw-hint-x:hover { opacity: 1; }
 .is-phone .tw-hint { right: 72px; width: 200px; }
+
+/* closed rooms (ui/team-access.js): a room you were let into, knocking, and under your room: knocks, who may look in, codes, log */
+.team-room.is-shared { border-color: rgba(106, 174, 255, .45); }
+.team-badge.is-shared { background: rgba(106, 174, 255, .16); color: var(--blue); }
+.tw-st.is-shared { background: rgba(106, 174, 255, .22); color: #A9CFFF; }
+.tb-team { position: relative; }
+.team-access-note { margin: 0; font-size: .72rem; color: var(--muted); }
+.team-access-note.is-in { color: var(--blue); font-weight: 600; }
+.team-knock { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.team-knock-b, .team-code-make, .team-redeem button, .team-ask-yes, .team-ask-no, .team-grant-x { all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+  font-size: .72rem; font-weight: 600; padding: 4px 10px; border-radius: 8px; background: var(--card-2); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+.team-knock-b svg.ic, .team-code-make svg.ic { width: 13px; height: 13px; }
+.team-knock-b:hover:not(:disabled), .team-code-make:hover:not(:disabled), .team-redeem button:hover:not(:disabled), .team-ask-yes:hover:not(:disabled), .team-grant-x:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--accent-line); }
+.team-ask-yes { background: var(--accent-soft); color: var(--accent); }
+.team-ask-no { color: var(--muted); }
+.team-ask-no:hover:not(:disabled) { color: var(--ink); }
+:is(.team-knock-b, .team-code-make, .team-redeem button, .team-ask-yes, .team-ask-no, .team-grant-x):disabled { cursor: default; opacity: .55; }
+:is(.team-knock-b, .team-code-make, .team-redeem button, .team-ask-yes, .team-ask-no, .team-grant-x):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tw-card .team-knock, .tw-card .team-access-note { margin-top: 6px; }
+
+.team-access { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); display: flex; flex-direction: column; gap: 10px; }
+.team-access-h { display: block; margin-bottom: 4px; font-size: .74rem; }
+.team-knocks:empty { display: none; }
+.team-knocks { display: flex; flex-direction: column; gap: 6px; }
+.team-ask { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 8px 10px; border-radius: 10px; background: var(--amber-soft); }
+.team-ask-t { margin: 0; font-size: .76rem; }
+.team-ask-b { display: flex; gap: 6px; flex-wrap: wrap; }
+.team-grants { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.team-grant { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; font-size: .76rem; }
+.team-grant b { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.team-grant small { color: var(--muted); font-size: .7rem; }
+.team-grant-none { font-size: .72rem; color: var(--muted); }
+.team-code-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.team-code-out { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.team-code-out[hidden] { display: none; }
+.team-code { font: 700 .95rem/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; padding: 5px 8px; border-radius: 8px; background: var(--card-2); user-select: all; }
+.team-code-copy { all: unset; cursor: pointer; display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 7px; color: var(--muted); }
+.team-code-copy:hover { color: var(--ink); background: var(--card-2); }
+.team-code-copy svg.ic { width: 14px; height: 14px; }
+.team-code-out small { font-size: .7rem; color: var(--muted); }
+.team-redeem { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .74rem; }
+.team-redeem label { color: var(--muted); }
+.team-redeem input { font: 600 .8rem ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .06em; text-transform: uppercase; width: 150px; padding: 5px 8px; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--side); color: var(--ink); }
+.team-redeem input:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.team-log summary { cursor: pointer; font-size: .74rem; font-weight: 600; color: var(--muted); }
+.team-log ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-direction: column; gap: 3px; max-height: 180px; overflow-y: auto; }
+.team-log-row { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; font-size: .72rem; }
+.team-log-row time { color: var(--faint); font-variant-numeric: tabular-nums; }
+.team-log-none { font-size: .72rem; color: var(--muted); }
+.is-phone .team-redeem input { width: 100%; min-height: 36px; }
