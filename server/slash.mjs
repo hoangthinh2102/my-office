@@ -12,7 +12,7 @@ import path from 'node:path';
 
 const MAX = 300;
 // the frontmatter's fields (one line each), else the first line of text as the description
-function front(text) {
+export function front(text) {
   const out = {}; const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
   if (m) for (const line of m[1].split(/\r?\n/)) { const f = /^([\w-]+):\s*(.*)$/.exec(line); if (f) out[f[1]] = f[2].trim().replace(/^["']|["']$/g, ''); }
   if (!out.description) out.description = (m ? text.slice(m[0].length) : text).split('\n').map((l) => l.replace(/^#+\s*/, '').trim()).find(Boolean) || '';

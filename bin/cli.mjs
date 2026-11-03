@@ -388,6 +388,56 @@ async function team() {
     process.exitCode = 1;
   }
 }
-const run = { start, install, setup, update, uninstall, doctor, pin, team }[cmd];
+/* ---------- your skills (Settings → Skills; server/skills.mjs), on this computer only ----------
+   my-office skills [list] | add <folder> [--copy] | remove <name> | search [words] | install <plugin@marketplace>
+   my-office skills uninstall <plugin@marketplace> | market add <owner/repo | URL | folder> */
+async function skills() {
+  const { createSkills, claudeOnPath, SkillError } = await import('../server/skills.mjs');
+  const s = createSkills({ claudeDir: process.env.CLAUDE_CONFIG_DIR || path.join(HOME, '.claude'), dataDir: DATA_DIR, claude: () => claudeOnPath() });
+  const [sub = 'list', arg] = args.filter((a) => a !== '--copy').slice(1), words = args.slice(2).filter((a) => !a.startsWith('--')).join(' ');
+  const usage = () => { console.log(tr('cli.skills.usage')); process.exitCode = 1; };
+  const newSession = () => console.log(`  ${tr('cli.skills.newSession')}`);
+  try {
+    if (sub === 'list') {
+      const l = await s.list();
+      console.log(tr('cli.skills.title'));
+      if (!l.skills.length && !l.plugins.length) console.log(`  ${tr('cli.skills.none')}`);
+      for (const k of l.skills) console.log(`  ${k.broken ? '✗' : '·'} ${k.name}  (${tr(k.broken ? 'cli.skills.broken' : k.link ? 'cli.skills.linked' : 'cli.skills.folder', { from: k.from || '' })})${k.desc ? `\n      ${k.desc.slice(0, 110)}` : ''}`);
+      for (const p of l.plugins) console.log(`  · ${p.id}  (${tr('cli.skills.plugin')}${p.enabled ? '' : `, ${tr('cli.skills.off')}`})`);
+      if (l.problem === 'no-claude') warn(tr('cli.skills.err.no-claude'));
+      else if (l.markets.length) console.log(`\n  ${tr('cli.skills.markets', { list: l.markets.map((m) => m.name).join(', ') })}`);
+    } else if (sub === 'add') {
+      if (!arg) return usage();
+      const r = await s.addFolder({ dir: arg, copy: args.includes('--copy') });
+      for (const n of r.added) ok(tr(args.includes('--copy') ? 'cli.skills.copied' : 'cli.skills.linkedOk', { name: n }));
+      for (const k of r.skipped) warn(`${k.name}: ${tr(`cli.skills.why.${k.why}`)}`);
+      if (r.added.length) newSession();
+    } else if (sub === 'remove') {
+      if (!arg) return usage();
+      const r = await s.remove(arg);
+      ok(r.was === 'link' ? tr('cli.skills.unlinked', { name: r.name }) : tr('cli.skills.removed', { name: r.name, to: r.movedTo }));
+    } else if (sub === 'search') {
+      const r = await s.search(words, { limit: 20 });
+      console.log(words ? tr('cli.skills.found', { n: r.total }) : tr('cli.skills.popular'));
+      for (const p of r.list) console.log(`  ${p.installed ? '✓' : '·'} ${p.id}${p.installs ? `  (${p.installs})` : ''}\n      ${p.desc.slice(0, 110)}`);
+      if (r.list.length) console.log(`\n  ${tr('cli.skills.howInstall')}`);
+    } else if (sub === 'install' || sub === 'uninstall') {
+      if (!arg) return usage();
+      await s[sub](arg);
+      ok(tr(sub === 'install' ? 'cli.skills.installed' : 'cli.skills.uninstalled', { name: arg }));
+      if (sub === 'install') newSession();
+    } else if (sub === 'market' && arg === 'add') {
+      if (!args[3]) return usage();
+      await s.addMarket(args[3]);
+      ok(tr('cli.skills.marketAdded'));
+    } else return usage();
+  } catch (e) {
+    if (!(e instanceof SkillError)) throw e;
+    const key = `cli.skills.err.${e.code}`, text = tr(key);
+    bad(text === key ? tr('cli.skills.err.other', { code: e.detail || e.code }) : text);
+    process.exitCode = 1;
+  }
+}
+const run = { start, install, setup, update, uninstall, doctor, pin, team, skills }[cmd];
 if (!run) { console.log(tr('cli.usage')); process.exit(1); }
 Promise.resolve(run()).catch((e) => { console.error(tr('cli.error', { message: e.message })); process.exit(1); });
