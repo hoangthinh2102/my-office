@@ -11,7 +11,7 @@ import {
 
 const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)',
-  // role: 'member' for everyone for now; an admin role comes later (docs/features/team-mode.md)
+  // role: 'admin' (invites, adds admins, removes members, changes the team's settings) or 'member'
   'CREATE TABLE IF NOT EXISTS members (id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL DEFAULT \'member\', joined_at INTEGER NOT NULL, left_at INTEGER)',
   'CREATE TABLE IF NOT EXISTS devices (key TEXT PRIMARY KEY, member_id TEXT NOT NULL, added_at INTEGER NOT NULL, revoked_at INTEGER)',
   'CREATE TABLE IF NOT EXISTS invites (hash TEXT PRIMARY KEY, created_by TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_by TEXT, used_at INTEGER)',
@@ -52,7 +52,13 @@ export class TeamCore {
     this.online = online;   // whether a member has a socket open now (the Durable Object knows; the tests say yes)
     // the tables are made only when a team is created, so a request for a team that doesn't exist writes nothing
     this.ready = this.rows("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'meta'").length > 0;
-    if (this.ready) for (const q of SCHEMA) this.sql.exec(q);   // (a team made by an older version gets the tables added since)
+    if (this.ready) { for (const q of SCHEMA) this.sql.exec(q); this.firstAdmin(); }   // (a team made by an older version gets the tables added since)
+  }
+  // a team made before admins existed: its creator (the key it was made with) becomes its first admin
+  firstAdmin() {
+    if (this.row("SELECT 1 AS x FROM members WHERE role = 'admin' AND left_at IS NULL")) return;
+    const creator = this.row('SELECT member_id FROM devices WHERE key = ? AND revoked_at IS NULL', this.meta('root_key'))?.member_id;
+    if (creator) this.sql.exec("UPDATE members SET role = 'admin' WHERE id = ? AND left_at IS NULL", creator);
   }
   init() { if (!this.ready) { for (const q of SCHEMA) this.sql.exec(q); this.ready = true; } }
   rows(q, ...b) { return this.sql.exec(q, ...b).toArray(); }
@@ -72,6 +78,9 @@ export class TeamCore {
         case 'GET me': return await this.me(req);
         case 'POST leave': return await this.leave(req);
         case 'POST policy': return await this.policy(req);
+        case 'POST promote': return await this.promote(req);
+        case 'POST stepdown': return await this.stepDown(req);
+        case 'POST remove': return await this.remove(req);
         case 'POST knock': return await this.knock(req);
         case 'POST answer': return await this.answer(req);
         case 'POST revoke': return await this.revoke(req);
@@ -119,16 +128,16 @@ export class TeamCore {
     const v = await this.signed(req);
     const id = await keyId(v.key), t = this.now();
     this.sql.exec('INSERT INTO meta (k, v) VALUES (?, ?), (?, ?), (?, ?), (?, ?)', 'team_id', req.teamId, 'name', team, 'root_key', v.key, 'created_at', String(t));
-    this.sql.exec('INSERT INTO members (id, name, joined_at) VALUES (?, ?, ?)', id, name, t);
+    this.sql.exec("INSERT INTO members (id, name, role, joined_at) VALUES (?, ?, 'admin', ?)", id, name, t);
     this.sql.exec('INSERT INTO devices (key, member_id, added_at) VALUES (?, ?, ?)', v.key, id, t);
     this.log(id, 'create', team);
-    return { status: 201, body: { team: { id: req.teamId, name: team }, me: { id, name, role: 'member' } } };
+    return { status: 201, body: { team: { id: req.teamId, name: team }, me: this.meOut(id) } };
   }
 
   async invite(req) {
     const m = await this.member(req), t = this.now();
-    if (!this.isOwner(m.id)) fail(403, 'not-owner');   // (only the team's creator brings people in)
-    const open = this.row('SELECT COUNT(*) AS n FROM invites WHERE created_by = ? AND used_at IS NULL AND expires_at > ?', m.id, t).n;
+    if (!this.isAdmin(m.id)) fail(403, 'not-owner');   // (only admins bring people in; the code predates admins)
+    const open = this.row('SELECT COUNT(*) AS n FROM invites WHERE created_by = ? AND expires_at > ?', m.id, t).n;
     if (open >= MAX_OPEN_INVITES) fail(429, 'too-many-invites');
     this.sql.exec('DELETE FROM invites WHERE expires_at < ?', t - 24 * 3600_000);   // (expired a day ago: nothing left to show)
     const teamId = this.meta('team_id'), code = makeInviteCode(), expiresAt = t + INVITE_TTL_MS;
@@ -145,36 +154,79 @@ export class TeamCore {
     const v = await this.signed(req), b = this.body(req), name = cleanName(b.name);
     if (!name || !isInviteCode(b.code)) fail(400, 'bad-request');
     const inv = this.row('SELECT * FROM invites WHERE hash = ?', await hashCode(this.meta('team_id'), b.code));
-    const bad = !inv ? 'invite-unknown' : inv.used_at ? 'invite-used' : inv.expires_at < t ? 'invite-expired' : null;
+    // a link works for everyone who has it until it runs out (an hour); used_by / used_at keep the last one in
+    const bad = !inv ? 'invite-unknown' : inv.expires_at < t ? 'invite-expired' : null;
     if (bad) { this.log(null, 'join-failed', bad); fail(bad === 'invite-unknown' ? 404 : 410, bad); }
     const dev = this.row('SELECT d.member_id, d.revoked_at, m.left_at FROM devices d JOIN members m ON m.id = d.member_id WHERE d.key = ?', v.key);
     if (dev && !dev.revoked_at && !dev.left_at) fail(409, 'already-member');
     const id = await keyId(v.key);
     this.sql.exec('UPDATE invites SET used_by = ?, used_at = ? WHERE hash = ?', id, t, inv.hash);
-    // someone who left and comes back with the same key is the same member again
+    // someone who left and comes back with the same key is the same member again (an ordinary member: roles don't come back)
     this.sql.exec(`INSERT INTO members (id, name, joined_at) VALUES (?, ?, ?)
-      ON CONFLICT (id) DO UPDATE SET name = excluded.name, joined_at = excluded.joined_at, left_at = NULL`, id, name, t);
+      ON CONFLICT (id) DO UPDATE SET name = excluded.name, joined_at = excluded.joined_at, left_at = NULL, role = 'member'`, id, name, t);
     this.sql.exec(`INSERT INTO devices (key, member_id, added_at) VALUES (?, ?, ?)
       ON CONFLICT (key) DO UPDATE SET member_id = excluded.member_id, added_at = excluded.added_at, revoked_at = NULL`, v.key, id, t);
     this.log(id, 'join', `by ${inv.created_by}`);
-    return { status: 201, body: { team: this.teamOut(), me: { id, name, role: 'member' } } };
+    return { status: 201, body: { team: this.teamOut(), me: this.meOut(id) }, send: this.membersFan() };
   }
 
   async me(req) {
     const m = await this.member(req);
-    const members = this.rows('SELECT id, name, role, joined_at FROM members WHERE left_at IS NULL ORDER BY joined_at')
-      .map((r) => ({ id: r.id, name: r.name, role: r.role, joinedAt: r.joined_at }));
-    return { status: 200, body: { team: this.teamOut(), me: { id: m.id, name: m.name, role: m.role, owner: this.isOwner(m.id) }, members, policy: this.policyOut() } };
+    return { status: 200, body: { team: this.teamOut(), me: this.meOut(m.id), members: this.membersOut(), policy: this.policyOut() } };
+  }
+  membersOut() {
+    return this.rows('SELECT id, name, role, joined_at FROM members WHERE left_at IS NULL ORDER BY joined_at')
+      .map((r) => ({ id: r.id, name: r.name, role: r.role === 'admin' ? 'admin' : 'member', joinedAt: r.joined_at }));
+  }
+  // (owner: an admin. The name is older than admins, and offices from before them read it.)
+  meOut(id) {
+    const m = this.row('SELECT id, name, role FROM members WHERE id = ? AND left_at IS NULL', id);
+    return m ? { id: m.id, name: m.name, role: m.role === 'admin' ? 'admin' : 'member', owner: m.role === 'admin' } : null;
+  }
+  /** Everyone's list of who is in the team and who is an admin, after it changed: [{ to, msg }]. */
+  membersFan() { const list = this.membersOut(); return list.map((m) => ({ to: m.id, msg: { t: 'members', list, me: this.meOut(m.id) } })); }
+
+  /* ---------- admins ----------
+     The creator is the first admin. An admin invites people, makes another member an admin, removes members, and
+     changes the team's settings. Nobody can take an admin away but that admin (stepping down), and the last admin
+     can't step down or leave while there are other members: someone must still be able to invite. */
+  isAdmin(memberId) { return !!this.row("SELECT 1 AS x FROM members WHERE id = ? AND role = 'admin' AND left_at IS NULL", memberId); }
+  admins() { return this.row("SELECT COUNT(*) AS n FROM members WHERE role = 'admin' AND left_at IS NULL").n; }
+  target(b) { const t = typeof b.member === 'string' ? this.row('SELECT id, name, role FROM members WHERE id = ? AND left_at IS NULL', b.member) : null; return t || fail(404, 'no-member'); }
+  async promote(req) {
+    const m = await this.member(req), b = this.body(req);
+    if (!this.isAdmin(m.id)) fail(403, 'not-owner');
+    const t = this.target(b);
+    if (t.role === 'admin') fail(409, 'already-admin');
+    this.sql.exec("UPDATE members SET role = 'admin' WHERE id = ?", t.id);
+    this.log(m.id, 'promote', t.id);
+    return { status: 200, body: { members: this.membersOut(), me: this.meOut(m.id) }, send: this.membersFan() };
+  }
+  async stepDown(req) {
+    const m = await this.member(req);
+    if (!this.isAdmin(m.id)) fail(409, 'not-admin');
+    if (this.admins() <= 1) fail(409, 'last-admin');
+    this.sql.exec("UPDATE members SET role = 'member' WHERE id = ?", m.id);
+    this.log(m.id, 'stepdown');
+    return { status: 200, body: { members: this.membersOut(), me: this.meOut(m.id) }, send: this.membersFan() };
+  }
+  async remove(req) {
+    const m = await this.member(req), b = this.body(req);
+    if (!this.isAdmin(m.id)) fail(403, 'not-owner');
+    const t = this.target(b);
+    if (t.id === m.id) fail(409, 'remove-self');   // (leave instead)
+    if (t.role === 'admin') fail(403, 'is-admin');   // (only an admin takes themselves away)
+    const send = this.drop(t.id);
+    this.log(m.id, 'remove', t.id);
+    return { status: 200, body: { members: this.membersOut(), me: this.meOut(m.id) }, left: t.id, send: [...send, ...this.membersFan()] };
   }
 
   /* ---------- the team's settings ----------
-     details: whether open rooms may show file names and commands. Off by default; only the team's creator (the key the
-     team was made with, kept as root_key) may change it, until there is an admin role. */
-  isOwner(memberId) { return !!this.row('SELECT 1 AS x FROM devices WHERE member_id = ? AND key = ? AND revoked_at IS NULL', memberId, this.meta('root_key')); }
+     details: whether open rooms may show file names and commands. Off by default; only admins change it. */
   policyOut() { return { details: this.meta('policy_details') === '1' }; }
   async policy(req) {
     const m = await this.member(req), b = this.body(req);
-    if (!this.isOwner(m.id)) fail(403, 'not-owner');
+    if (!this.isAdmin(m.id)) fail(403, 'not-owner');
     if (typeof b.details !== 'boolean') fail(400, 'bad-request');
     this.sql.exec('INSERT INTO meta (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v', 'policy_details', b.details ? '1' : '0');
     this.log(m.id, 'policy', `details=${b.details}`);
@@ -216,7 +268,7 @@ export class TeamCore {
    *  who may watch its own room, who is knocking, and the knocks it is waiting on. */
   hello(viewerId, online) {
     const me = this.members().find((m) => m.id === viewerId);
-    return { t: 'hello', team: this.teamOut(), me: me ? { id: me.id, name: me.name, owner: this.isOwner(me.id) } : null, policy: this.policyOut(),
+    return { t: 'hello', team: this.teamOut(), me: me ? this.meOut(me.id) : null, policy: this.policyOut(), members: this.membersOut(),
       rooms: this.members().filter((m) => m.id !== viewerId).map((m) => this.roomOut(m, online(m.id), viewerId)),
       grants: this.grantsOut(viewerId), knocks: this.knocksOut(viewerId), asks: this.asksOut(viewerId) };
   }
@@ -262,24 +314,31 @@ export class TeamCore {
   }
 
   async leave(req) {
-    const m = await this.member(req), t = this.now();
-    const hosts = this.rows('SELECT room FROM grants WHERE viewer = ?', m.id).map((r) => r.room);   // rooms that had let them in
-    this.sql.exec('UPDATE members SET left_at = ? WHERE id = ?', t, m.id);
-    this.sql.exec('UPDATE devices SET revoked_at = ? WHERE member_id = ? AND revoked_at IS NULL', t, m.id);
-    this.sql.exec('DELETE FROM grants WHERE room = ? OR viewer = ?', m.id, m.id);
-    this.sql.exec('DELETE FROM knocks WHERE room = ? OR viewer = ?', m.id, m.id);
-    this.sql.exec('DELETE FROM view_codes WHERE room = ?', m.id);
-    this.sql.exec('DELETE FROM access_log WHERE room = ?', m.id);
-    this.sql.exec('DELETE FROM rooms WHERE member_id = ?', m.id);
-    this.live?.delete(m.id);
+    const m = await this.member(req);
+    if (m.role === 'admin' && this.admins() <= 1 && this.members().length > 1) fail(409, 'last-admin');   // (make someone else an admin first)
+    const send = this.drop(m.id);
     this.log(m.id, 'leave');
-    return { status: 200, body: { ok: true }, left: m.id, send: hosts.map((h) => ({ to: h, msg: { t: 'grants', list: this.grantsOut(h) } })) };
+    return { status: 200, body: { ok: true }, left: m.id, send: [...send, ...this.membersFan()] };
+  }
+  // a member gone (left, or removed by an admin): no devices, no grants either way, no room. Returns who to tell what.
+  drop(id) {
+    const t = this.now();
+    const hosts = this.rows('SELECT room FROM grants WHERE viewer = ?', id).map((r) => r.room);   // rooms that had let them in
+    this.sql.exec('UPDATE members SET left_at = ? WHERE id = ?', t, id);
+    this.sql.exec('UPDATE devices SET revoked_at = ? WHERE member_id = ? AND revoked_at IS NULL', t, id);
+    this.sql.exec('DELETE FROM grants WHERE room = ? OR viewer = ?', id, id);
+    this.sql.exec('DELETE FROM knocks WHERE room = ? OR viewer = ?', id, id);
+    this.sql.exec('DELETE FROM view_codes WHERE room = ?', id);
+    this.sql.exec('DELETE FROM access_log WHERE room = ?', id);
+    this.sql.exec('DELETE FROM rooms WHERE member_id = ?', id);
+    this.live?.delete(id);
+    return hosts.map((h) => ({ to: h, msg: { t: 'grants', list: this.grantsOut(h) } }));
   }
 
   /* ---------- closed rooms: who may watch (step 4) ----------
      A closed room shows only how many are in. Its owner can let someone in: by answering their knock (for an hour,
      until the end of the owner's day, or always: the trusted list), or with a one-time view code (an hour). The owner
-     sees who is let in and can take it back; every step is in the room's access log. The team's creator has no say
+     sees who is let in and can take it back; every step is in the room's access log. Admins have no say
      over anyone else's room. */
   grantOf(room, viewer) {
     const g = this.row('SELECT expires_at FROM grants WHERE room = ? AND viewer = ?', room, viewer);

@@ -117,7 +117,8 @@ test('grants run out; a revoke takes effect at once; leaving takes them all', ne
   await send(b.keys, 'POST', 'knock', { room: a.id });
   await send(a.keys, 'POST', 'answer', { viewer: b.id, grant: 'always' });
   const left = await send(b.keys, 'POST', 'leave', {});
-  assert.deepEqual(left.send.map((o) => [o.to, o.msg.t, o.msg.list.length]), [[a.id, 'grants', 0]]);
+  assert.deepEqual(left.send.filter((o) => o.msg.t === 'grants').map((o) => [o.to, o.msg.list.length]), [[a.id, 0]]);
+  assert.deepEqual(left.send.filter((o) => o.msg.t === 'members').map((o) => o.to).sort(), [a.id, c.id].sort());   // (everyone left hears the new list)
 });
 
 test('a view code: once, for ten minutes, an hour of watching; wrong codes are limited', needsSqlite, async () => {

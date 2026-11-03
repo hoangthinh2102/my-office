@@ -32,6 +32,8 @@ export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => 
   // closed rooms: who may see mine (grants), who is knocking on mine (knocks), rooms I knocked on (asks),
   // and the last answer about rooms I asked to see (answers: room -> { state, until, at })
   let grants = [], knocks = [];
+  let members = [];   // everyone in the team: { id, name, role: 'admin' | 'member', joinedAt }
+  const membersOf = (x) => (Array.isArray(x) ? x.filter((m) => m?.id) : []);
   const asks = new Map(), answers = new Map();
   const sharing = () => grants.some((g) => g.until == null || g.until > now());
   let changeTimer = null;
@@ -110,11 +112,12 @@ export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => 
     if (msg.t === 'hello') {
       me = msg.me || null; policy = { details: !!msg.policy?.details };
       rooms.clear(); for (const r of msg.rooms || []) if (r?.member?.id) rooms.set(r.member.id, r);
-      grants = listOf(msg.grants); knocks = listOf(msg.knocks);
+      grants = listOf(msg.grants); knocks = listOf(msg.knocks); members = membersOf(msg.members);
       asks.clear(); for (const a of msg.asks || []) if (a?.room) asks.set(a.room, a.at);
       flush(true);
     } else if (msg.t === 'room' && msg.room?.member?.id) rooms.set(msg.room.member.id, msg.room);
     else if (msg.t === 'gone' && msg.member) rooms.delete(msg.member);
+    else if (msg.t === 'members') { members = membersOf(msg.list); if (msg.me?.id) me = msg.me; }   // (someone joined, left, was removed, became or stopped being an admin)
     else if (msg.t === 'policy') { policy = { details: !!msg.policy?.details }; dirty = true; }
     else if (msg.t === 'grants') { grants = listOf(msg.list); dirty = true; }   // (sharing may start or stop)
     else if (msg.t === 'knocks') knocks = listOf(msg.list);
@@ -170,13 +173,19 @@ export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => 
       if (asked) { asks.set(asked, now()); answers.delete(asked); }
       changed();
     },
+    /** What the hub just answered to a call about members (its own 'members' message follows a moment later). */
+    setMembers({ members: list, me: m } = {}) {
+      if (list) members = membersOf(list);
+      if (m?.id) me = m;
+      changed();
+    },
     /** For GET /api/team and `my-office team rooms`. */
     state() {
       return {
         inTeam: !!team, team: team ? { id: team.teamId, name: team.teamName, hub: team.hub } : null,
         me: me || (team ? { id: team.memberId, name: team.name } : null),
         room: team ? { mode: mode(), paused: !!team.paused } : null,
-        connected, problem: why || null, policy, rooms: [...rooms.values()],
+        connected, problem: why || null, policy, rooms: [...rooms.values()], members,
         grants: grants.filter((g) => g.until == null || g.until > now()), knocks,
         asks: [...asks].map(([room, at]) => ({ room, at })),
         answers: [...answers].filter(([, a]) => now() - a.at < ANSWER_KEEP_MS).map(([room, a]) => ({ room, ...a })),

@@ -5,7 +5,7 @@
 export const PROTOCOL = 1;
 export const MAX_SKEW_MS = 60_000;          // a signed request older or newer than this is refused
 export const NONCE_KEEP_MS = 2 * MAX_SKEW_MS;   // how long the hub remembers a nonce (longer than any accepted request lives)
-export const INVITE_TTL_MS = 15 * 60_000;   // an invite works once, for 15 minutes
+export const INVITE_TTL_MS = 60 * 60_000;   // an invite link works for anyone who has it, for an hour
 export const NAME_MAX = 40;
 /* closed rooms (step 4): knocking, one-time view codes, grants */
 export const KNOCK_TTL_MS = 10 * 60_000;     // a knock waits for an answer this long

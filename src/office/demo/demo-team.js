@@ -5,6 +5,7 @@ import { state } from '../core/state.js';
 import { rand } from '../core/env.js';
 import { onTeam, setDemoRoom } from '../ui/team.js';
 import { setDemoAccess } from '../ui/team-access.js';
+import { setDemoMembers } from '../ui/team-members.js';
 
 const PEOPLE = [
   ['Lan', 'open', [['Dev', 'shop-api', 'work', 'edit'], ['Reviewer', 'shop-api', 'rest', ''], ['QA', 'shop-web', 'wait', 'ask']]],
@@ -29,9 +30,11 @@ export function startDemoTeam(t0 = Date.now()) {
   });
   const byName = (n) => rooms.find((r) => r.member.name === n).member;
   const t = {
-    inTeam: true, team: { id: 'demo', name: 'Demo Studio', hub: '' }, me: { id: 'demo-me', name: 'You', owner: true }, room: { mode: 'closed', paused: false }, connected: true, problem: null, policy: { details: false }, rooms,
+    inTeam: true, team: { id: 'demo', name: 'Demo Studio', hub: '' }, me: { id: 'demo-me', name: 'You', role: 'admin', owner: true }, room: { mode: 'closed', paused: false }, connected: true, problem: null, policy: { details: false }, rooms,
     grants: [{ viewer: byName('Lan'), until: null, since: t0 - 86400e3 }], knocks: [{ viewer: byName('Huy'), at: t0 - 40e3 }], asks: [], answers: [],
   };
+  // everyone in the team (you made it, so you're an admin; Lan is one too)
+  t.members = [{ id: 'demo-me', name: 'You', role: 'admin', joinedAt: t0 - 30 * 86400e3 }, ...rooms.map((r, i) => ({ id: r.member.id, name: r.member.name, role: r.member.name === 'Lan' ? 'admin' : 'member', joinedAt: t0 - (20 - i) * 86400e3 }))];
   const log = [{ at: t0 - 40e3, viewer: byName('Huy'), action: 'knock', detail: '' }, { at: t0 - 86400e3, viewer: byName('Lan'), action: 'grant', detail: 'always' }];
   const show = (extra = {}) => { onTeam({ ...t }); return { ok: true, team: { ...t }, ...extra }; };
   // what the server would answer (ui/team-access.js), on the pretend team
@@ -61,6 +64,16 @@ export function startDemoTeam(t0 = Date.now()) {
       return show();
     }
     return { ok: false, code: 'bad-request' };
+  });
+  setDemoMembers((action, id) => {
+    const m = t.members.find((x) => x.id === id), admins = t.members.filter((x) => x.role === 'admin').length;
+    if (action === 'stepdown') { if (admins <= 1) return { ok: false, code: 'last-admin' }; t.members = t.members.map((x) => (x.id === 'demo-me' ? { ...x, role: 'member' } : x)); t.me = { ...t.me, role: 'member', owner: false }; return show(); }
+    if (!t.me.owner) return { ok: false, code: 'not-owner' };
+    if (!m) return { ok: false, code: 'no-member' };
+    if (m.role === 'admin') return { ok: false, code: action === 'remove' ? 'is-admin' : 'already-admin' };
+    if (action === 'promote') t.members = t.members.map((x) => (x.id === id ? { ...x, role: 'admin' } : x));
+    else { t.members = t.members.filter((x) => x.id !== id); const i = rooms.findIndex((r) => r.member.id === id); if (i >= 0) rooms.splice(i, 1); t.grants = t.grants.filter((g) => g.viewer.id !== id); t.knocks = t.knocks.filter((k) => k.viewer.id !== id); }
+    return show();
   });
   setDemoRoom((mode) => {
     if (typeof mode === 'object') t.policy = { details: !!mode.details };   // the team's setting (you made the team)

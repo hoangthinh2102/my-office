@@ -10,6 +10,7 @@ import { floorsOf, latest, seesIn, stateOf } from '../../shared/team-floors.js';
 import { fillAccess, knockBlock, noticeKnocks, post, setApply } from './team-access.js';
 import { syncLift } from './team-lift.js';
 import { setApply as setJoinApply, syncJoin } from './team-join.js';
+import { fillMembers, setApply as setMembersApply } from './team-members.js';
 import { goTower } from '../world/team-tower.js';
 import { t as tr } from '../../i18n/index.js';
 
@@ -17,7 +18,7 @@ let modal, demoSet = null;
 const isOpen = () => modal && !modal.hidden;
 const team = () => state.team || null;
 
-/** The relay's state ({ inTeam, team, me, room, connected, policy, rooms, grants, knocks, asks, answers }), from the stream or demo mode. */
+/** The relay's state ({ inTeam, team, me, room, connected, policy, rooms, members, grants, knocks, asks, answers }), from the stream or demo mode. */
 export function onTeam(t) {
   state.team = t || null;
   const btn = $('btn-team');
@@ -34,7 +35,7 @@ export function setDemoRoom(fn) { demoSet = fn; }
 function open() { if (!team()?.inTeam) return; modal.hidden = false; $('btn-team')?.setAttribute('aria-pressed', 'true'); render(); }
 function close() { modal.hidden = true; $('btn-team')?.setAttribute('aria-pressed', 'false'); }
 
-// the team's setting (creator only; the hub checks it too): may open rooms show file names and commands?
+// the team's setting (admins only; the hub checks it too): may open rooms show file names and commands?
 async function setDetails(on) {
   if (demoSet) { demoSet({ details: on }); return; }
   try { onTeam((await post('/api/team/policy', { details: on })).team); } catch (e) { toast(tr('team.policy.failed', { why: e.message })); render(); }
@@ -59,7 +60,7 @@ const counts = (c = {}) => tr('team.counts', { work: c.work || 0, wait: c.wait |
 function render() {
   const t = team(); if (!t?.inTeam) return;
   $('team-title').textContent = tr('team.title', { team: t.team?.name || '' });
-  $('team-sub').textContent = t.room?.paused ? tr('team.sub.paused') : t.connected ? tr('team.sub.on', { n: t.rooms.length }) : tr('team.sub.off');
+  $('team-sub').textContent = t.room?.paused ? tr('team.sub.paused') : t.connected ? tr('team.sub.on', { n: t.rooms.length }) : t.problem === 'not-member' ? tr('team.sub.removed') : tr('team.sub.off');
   // your room
   const mine = t.room?.paused ? 'paused' : t.room?.mode === 'open' ? 'open' : 'closed', local = !!state.isLocal || !!demoSet;
   for (const b of modal.querySelectorAll('.team-seg-b')) {
@@ -68,7 +69,7 @@ function render() {
     b.disabled = !local;
   }
   $('team-mine-note').textContent = local ? tr(`team.mine.${mine}Hint`) : `${tr(`team.mine.${mine}Hint`)} ${tr('team.mine.phone')}`;
-  // the team's setting: everyone sees it; its creator changes it (on the computer the office runs on)
+  // the team's setting: everyone sees it; admins change it (on the computer the office runs on)
   const details = !!t.policy?.details, owner = !!t.me?.owner;
   $('team-policy-t').textContent = `${tr(details ? 'team.policy.on' : 'team.policy.off')} ${owner ? tr('team.policy.youOwn') : tr('team.policy.byOwner')}`;
   $('team-policy-sw').hidden = !owner;
@@ -76,6 +77,7 @@ function render() {
   $('team-mine').querySelector('.team-owner')?.remove();
   if (owner) $('team-mine').querySelector('.team-mine-head b').append(el('span', 'team-owner', tr('team.owner')));
   fillAccess(t);
+  fillMembers(t);
   $('team-3d-note').textContent = HQ ? tr('team.lift.hint') : tr('team.lift.notHq');
   // everyone else's, floor by floor
   const box = $('team-floors'), floors = floorsOf(t.rooms);
@@ -148,7 +150,7 @@ export function setup() {
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && isOpen()) close(); });
   for (const b of modal.querySelectorAll('.team-seg-b')) b.addEventListener('click', () => { if (!b.classList.contains('is-sel')) setMine(b.dataset.mode); });
   $('team-policy-in')?.addEventListener('change', (e) => setDetails(e.target.checked));
-  setApply(onTeam); setJoinApply(onTeam);
+  setApply(onTeam); setJoinApply(onTeam); setMembersApply(onTeam);
   // "N min ago" stays true while the building is open
   setInterval(() => { if (isOpen()) render(); }, 30_000);
 }

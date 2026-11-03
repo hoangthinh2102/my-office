@@ -7,10 +7,11 @@ Hướng dẫn đầy đủ: [team-guide.md](team-guide.md).
 
 ## Trước khi thử (người tạo team)
 
-- [ ] Hub đã lên bản mới nhất: mở `https://<hub>/` thấy `version` mới nhất (đang là `0.3.2`).
+- [ ] Hub đã lên bản mới nhất: mở `https://<hub>/` thấy `version` mới nhất (đang là `0.4.0`).
 - [ ] Văn phòng của bạn đang chạy và đã ở team: nút **Toà nhà** có trên thanh trên cùng.
-- [ ] Mỗi người một link: **Toà nhà → Mời người vào team** → **Chép**, gửi riêng qua Lark. Link sống 15 phút, nên gửi
-      khi người đó sẵn sàng.
+- [ ] Cho thêm một người làm admin (**Toà nhà → Thành viên → Cho làm admin**), để còn người mời được nếu bạn vắng.
+- [ ] Một link cho cả nhóm: **Toà nhà → Mời người vào team** → **Chép**, gửi vào nhóm Lark của buổi thử. Link dùng
+      được 1 giờ, nên gửi khi mọi người sẵn sàng (hết giờ thì tạo link mới).
 
 ## Mỗi người thử (khoảng 15 phút)
 
@@ -36,6 +37,10 @@ Hướng dẫn đầy đủ: [team-guide.md](team-guide.md).
 - [ ] Thang máy bên phải: xem toàn nhà, vào từng tầng, về tầng của bạn.
 - [ ] Phòng mở thấy nhân viên ngồi làm; phòng đóng là kính mờ; phòng đã cho mình xem là kính trong.
 
+**Admin** (người được cho làm admin thử)
+- [ ] Mời một người bằng link của mình. Đổi cài đặt **Hiện tên file và câu lệnh** rồi tắt lại.
+- [ ] **Thôi làm admin**: nhãn Admin mất, nút mời biến mất.
+
 **Khác**
 - [ ] Mở văn phòng trên điện thoại (nếu đã bật): chỉ xem được, các nút bị khoá.
 - [ ] Tắt mạng một lúc rồi bật lại: văn phòng tự kết nối lại.
@@ -54,4 +59,4 @@ Có lỗi khi cài: chạy `node ~/my-office/bin/cli.mjs doctor` và gửi kèm 
 
 ## Sau buổi thử
 
-Gom góp ý, sửa những chỗ chặn người dùng trước, rồi mới làm tiếp: mã hoá đầu cuối cho phòng đóng, admin, mở cho cả team.
+Gom góp ý, sửa những chỗ chặn người dùng trước, rồi mới làm tiếp: mã hoá đầu cuối cho phòng đóng, mở cho cả team.

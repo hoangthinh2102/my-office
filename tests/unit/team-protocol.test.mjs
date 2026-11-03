@@ -105,13 +105,15 @@ test('hub: create a team, invite, join, list, leave', { skip: !DatabaseSync && '
   assert.equal((await send(a, 'GET', 'me')).body.members.length, 2);
 });
 
-test('hub: an invite works once, for 15 minutes, and only its own code', { skip: !DatabaseSync && 'needs node:sqlite' }, async () => {
+test('hub: an invite works for everyone who has it, for an hour, and only its own code', { skip: !DatabaseSync && 'needs node:sqlite' }, async () => {
   const { send, clock } = hub(), a = await generateKeys();
   await send(a, 'POST', 'create', { team: 'T', name: 'A' });
   const inv = await send(a, 'POST', 'invites', {});
+  assert.equal(inv.body.expiresAt, clock.t + 60 * 60_000);
   assert.equal((await send(await generateKeys(), 'POST', 'join', { code: inv.body.code, name: 'B' })).status, 201);
-  const used = await send(await generateKeys(), 'POST', 'join', { code: inv.body.code, name: 'C' });
-  assert.deepEqual([used.status, used.body.error], [410, 'invite-used']);
+  clock.t += 50 * 60_000;   // (later the same hour: someone else with the same link)
+  assert.equal((await send(await generateKeys(), 'POST', 'join', { code: inv.body.code, name: 'C' })).status, 201);
+  assert.deepEqual((await send(a, 'GET', 'me')).body.members.map((m) => m.name).sort(), ['A', 'B', 'C']);
 
   const late = await send(a, 'POST', 'invites', {});
   clock.t += INVITE_TTL_MS + 1;
