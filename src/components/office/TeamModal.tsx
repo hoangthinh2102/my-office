@@ -33,6 +33,12 @@ export default async function TeamModal() {
                 <span>{t('team.policy.switch')}</span>
               </label>
             </div>
+            {/* invite someone (the team's creator; src/office/ui/team-join.js) */}
+            <div className="team-invite" id="team-invite">
+              <button type="button" className="team-code-make" id="team-invite-make" hidden><span data-icon="users"></span>{t('team.join.invite')}</button>
+              <span className="team-code-out" id="team-invite-out" hidden></span>
+              <p className="team-access-note" id="team-invite-note"></p>
+            </div>
             {/* closed rooms: knocks on your door, who may look in, view codes (src/office/ui/team-access.js) */}
             <div className="team-access" id="team-access">
               <p className="team-access-note" id="team-access-open" hidden>{t('team.access.isOpen')}</p>

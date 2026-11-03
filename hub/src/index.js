@@ -1,7 +1,7 @@
 // The team hub, as a Cloudflare Worker: one Durable Object per team (team.js) holds that team's records in SQLite.
 //
 //   POST /teams              create a team (signed by the creator's key; CREATE_TOKEN, if set, is required too)
-//   POST /t/<team>/invites   a one-time invite link (a member)
+//   POST /t/<team>/invites   a one-time invite link (the team's creator only)
 //   POST /t/<team>/join      join with an invite code (signed by the newcomer's key)
 //   GET  /t/<team>/me        the team, who you are, the members
 //   POST /t/<team>/leave     leave the team
@@ -14,7 +14,7 @@ import { isTeamId, randomId } from '../../shared/team-protocol.js';
 
 export { Team } from './team.js';
 
-const VERSION = '0.3.0';
+const VERSION = '0.3.1';
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 const ACTIONS = new Set(['invites', 'join', 'me', 'leave', 'policy', 'ws', 'knock', 'answer', 'revoke', 'code', 'redeem', 'access']);
 

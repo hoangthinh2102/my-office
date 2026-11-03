@@ -32,9 +32,12 @@ Mọi lệnh dưới đây chạy **trong thư mục `my-office`**.
 
 ## 2. Vào team
 
-1. Nhờ một người đã ở trong team chạy `node bin/cli.mjs team invite`, rồi gửi bạn link mời. Link có dạng
-   `https://…/j/…`, **chỉ dùng được một lần, trong 15 phút**.
-2. Chạy lệnh vào team:
+1. Xin **người tạo team** một link mời. Link có dạng `https://…/j/…`, **chỉ dùng được một lần, trong 15 phút**.
+2. **Cách dễ nhất, trên trang văn phòng**: mở **Cài đặt → Khác**, mục **Team**: dán link mời, gõ tên (để trống thì lấy
+   tên git), bấm **Vào team**. Nút **Toà nhà** hiện lên trên thanh trên cùng sau vài giây. Chỉ làm được trên máy chạy
+   văn phòng, không làm được từ điện thoại.
+
+   Hoặc chạy lệnh:
 
    ```bash
    node bin/cli.mjs team join <link mời>
@@ -49,8 +52,10 @@ Mọi lệnh dưới đây chạy **trong thư mục `my-office`**.
 
    Lệnh này in ra tên team, tên của bạn, chế độ phòng và danh sách thành viên.
 
-Mở link mời bằng trình duyệt thì chỉ thấy một trang chữ hướng dẫn chạy lệnh trên. Link chỉ có tác dụng khi dùng với
-lệnh `team join`.
+Mở link mời bằng trình duyệt thì chỉ thấy một trang chữ hướng dẫn. Link chỉ có tác dụng khi dán vào **Cài đặt → Khác
+→ Team** hoặc dùng với lệnh `team join`.
+
+Người đã cài My Office từ trước thì `git pull`, `npm run build`, rồi khởi động lại văn phòng để có mục này.
 
 ## 3. Phòng của bạn: mở, đóng, tạm dừng
 
@@ -139,12 +144,17 @@ Lưu ý: thu hồi chỉ chặn từ lúc đó trở đi; người xem đã th�
 
 ## 4. Mời đồng đội
 
+**Chỉ người tạo team mời được người mới.** Thành viên khác thấy dòng "Chỉ người tạo team mời được người mới".
+
+Trên trang: mở **Toà nhà**, phần *Phòng của bạn*, bấm **Mời người vào team**. Link hiện ra kèm nút chép và giờ hết hạn.
+Hoặc chạy lệnh:
+
 ```bash
 node bin/cli.mjs team invite
 ```
 
-Gửi link vừa in ra cho đúng một người, qua kênh riêng (tin nhắn trực tiếp). Mỗi link chỉ dùng được cho một người, hết
-hạn sau 15 phút. Ai cần thì tạo link mới.
+Gửi link cho đúng một người, qua kênh riêng (tin nhắn trực tiếp). Mỗi link chỉ dùng được cho một người, hết hạn sau 15
+phút. Cần thêm thì tạo link mới.
 
 ## 5. Rời team
 
@@ -186,6 +196,7 @@ máy.
 | `doctor` báo chế độ team cần Node 22 | Cập nhật Node.js lên 22 trở lên, rồi khởi động lại văn phòng |
 | Mã xem đã được dùng / đã hết hạn / không tồn tại | Xin chủ phòng một mã mới |
 | Vừa nhập sai mã nhiều quá / gõ cửa nhiều quá | Đợi 10 phút rồi thử lại |
+| Chỉ người tạo team mới làm được việc này | Nhờ người tạo team tạo link mời |
 | Gõ cửa báo `not-found` | Hub chưa lên bản mới (0.3.0): báo người quản lý hub chạy `cd hub && npm run deploy` |
 
 ---

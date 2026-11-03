@@ -61,7 +61,7 @@ export default {
     usage: [
       'Usage: my-office team <command>',
       '  create --hub <url> --name <team name> [--me <your name>] [--token <token>]   start a team (you are its first member)',
-      '  invite                                    a one-time link for a teammate (15 minutes)',
+      '  invite                                    a one-time link for a teammate (15 minutes; team creator only)',
       '  join <invite link> [--me <your name>]     join a team',
       '  status                                    the team and its members',
       '  leave [--local]                           leave the team (--local: forget it here even if the hub is down)',
@@ -150,7 +150,7 @@ export default {
       'bad-signature': 'The hub refused the signature. Update My Office and try again.',
       replay: 'The hub saw this request twice. Try again.',
       'bad-mode': 'A room is open or closed: my-office team room open|closed',
-      'not-owner': 'Only the person who created the team can change its settings.',
+      'not-owner': 'Only the person who created the team can do that (invite people, change its settings).',
       'code-unknown': "That view code doesn't exist. Check it, or ask for a new one.",
       'code-used': 'That view code was already used. Ask for a new one.',
       'code-expired': 'That view code has expired (10 minutes). Ask for a new one.',

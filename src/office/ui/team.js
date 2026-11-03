@@ -9,6 +9,7 @@ import { toast } from './activity.js';
 import { floorsOf, latest, seesIn, stateOf } from '../../shared/team-floors.js';
 import { fillAccess, knockBlock, noticeKnocks, post, setApply } from './team-access.js';
 import { syncLift } from './team-lift.js';
+import { setApply as setJoinApply, syncJoin } from './team-join.js';
 import { goTower } from '../world/team-tower.js';
 import { t as tr } from '../../i18n/index.js';
 
@@ -24,6 +25,7 @@ export function onTeam(t) {
   if (!t?.inTeam && isOpen()) close();
   if (isOpen()) render();
   noticeKnocks(state.team);   // (a knock on your door: a toast, and a badge on the building button)
+  syncJoin(state.team);       // (the invite button here, and Settings → More's join form)
   syncLift(state.team);   // the 3D building (headquarters plan)
 }
 /** Demo mode changes its own pretend room instead of asking the server. */
@@ -146,7 +148,7 @@ export function setup() {
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && isOpen()) close(); });
   for (const b of modal.querySelectorAll('.team-seg-b')) b.addEventListener('click', () => { if (!b.classList.contains('is-sel')) setMine(b.dataset.mode); });
   $('team-policy-in')?.addEventListener('change', (e) => setDetails(e.target.checked));
-  setApply(onTeam);
+  setApply(onTeam); setJoinApply(onTeam);
   // "N min ago" stays true while the building is open
   setInterval(() => { if (isOpen()) render(); }, 30_000);
 }

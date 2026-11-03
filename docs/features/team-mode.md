@@ -1,6 +1,6 @@
 # Chế độ team (bước 1–4: danh tính, hub, relay, toà nhà, phòng đóng)
 
-> Lark task: — · PR: #1 (bước 1), #2 + #3 (bước 2), #4 (bước 3a), #5 (bước 3b), bước 4: (điền khi tạo) · Ngày: 2026-11-03
+> Lark task: — · PR: #1 (bước 1), #2 + #3 (bước 2), #4 (bước 3a), #5 (bước 3b), #6 (bước 4), mời / vào team trên giao diện: (điền khi tạo) · Ngày: 2026-11-03
 > Hướng dẫn cho người dùng: [docs/team-guide.md](../team-guide.md)
 
 ## Mục đích
@@ -30,6 +30,11 @@ Bước 4 làm **phòng đóng**:
 Người được cho xem thấy phòng đóng như phòng mở: kính trong và nhân vật trong 3D, danh sách người trong bảng. Không làm
 QR (bỏ theo quyết định khi duyệt kế hoạch). Hub lên bản **0.3.0**: phải deploy lại hub.
 
+Sau bước 4 (hub **0.3.1**):
+- **chỉ người tạo team mời được người mới** (hub từ chối người khác với `not-owner`);
+- mời người ngay trong panel toà nhà (nút **Mời người vào team**, chỉ người tạo team thấy);
+- người chưa vào team dán link mời trong **Cài đặt → Khác → Team** để vào, không cần gõ lệnh.
+
 Chưa có: admin. Lộ trình ở cuối file.
 
 ## Cách sử dụng
@@ -39,7 +44,7 @@ Chưa có: admin. Lộ trình ở cuối file.
 | Lệnh | Việc |
 | --- | --- |
 | `team create --hub <url> --name <tên team> [--me <tên>] [--token <token>]` | Tạo team, máy này là thành viên đầu tiên. In **khoá khôi phục** một lần duy nhất. |
-| `team invite` | Link mời dùng một lần, hết hạn sau 15 phút. Thành viên nào cũng tạo được. |
+| `team invite` | Link mời dùng một lần, hết hạn sau 15 phút. **Chỉ người tạo team** (từ hub 0.3.1). |
 | `team join <link mời> [--me <tên>]` | Vào team. |
 | `team status` | Team, tên của bạn, chế độ phòng, danh sách thành viên. |
 | `team leave [--local]` | Rời team trên hub rồi xoá khoá khỏi máy. `--local`: xoá trên máy kể cả khi không kết nối được hub. |
@@ -122,6 +127,23 @@ Chỉ ở kiểu văn phòng **Tập đoàn** (`hq`); các kiểu khác chỉ c�
 
 Cùng điều kiện như `/api/team/room`: loopback, không qua tunnel, cùng origin, JSON.
 
+### Mời và vào team trên giao diện
+
+Code: `src/office/ui/team-join.js` (markup trong `TeamModal.tsx` và `SettingsPanel.tsx`).
+
+- **Panel toà nhà**, phần *Phòng của bạn*: người tạo team thấy nút **Mời người vào team**. Bấm vào thì hiện link, nút
+  chép, giờ hết hạn. Người khác thấy "Chỉ người tạo team mời được người mới".
+- **Cài đặt → Khác → Team**: chưa vào team thì có ô link mời, ô tên (để trống: tên git) và nút **Vào team**. Đã vào
+  team thì hiện tên team và nút **Mở Toà nhà**. Trên điện thoại chỉ có dòng nhắc vào team trên máy chạy văn phòng.
+- Vào xong, relay tự kết nối (không cần khởi động lại). Phòng bắt đầu ở chế độ đóng.
+
+| Method | Path | Body | Trả về |
+| --- | --- | --- | --- |
+| `POST` | `/api/team/invite` | `{}` | `{ ok, invite, expiresAt }` · `{ ok: false, code: 'not-owner' }` |
+| `POST` | `/api/team/join` | `{ link, name? }` | `{ ok, team }` · `{ ok: false, code }` (vd. `bad-invite`, `invite-used`, `already-in-team`) |
+
+Cùng điều kiện như `/api/team/room`: loopback, không qua tunnel, cùng origin, JSON.
+
 ### Phòng đóng trong panel (bước 4)
 
 Code: `src/office/ui/team-access.js` (markup trong `TeamModal.tsx`).
@@ -161,7 +183,7 @@ Mọi yêu cầu (trừ `GET /` và `GET /j/…`) phải **có chữ ký** (xem 
 | GET | `/` | ai cũng được | `{ name: "my-office-hub", version, protocol: 1 }` |
 | GET | `/j/<team>.<mã>` | trình duyệt | Trang chữ hướng dẫn chạy `team join` với link này |
 | POST | `/teams` | người tạo team | Body `{ team, name }`. Header `x-create-token` nếu hub có đặt `CREATE_TOKEN`. → 201 `{ team: {id, name}, me: {id, name, role} }` |
-| POST | `/t/<team>/invites` | thành viên | → 201 `{ invite, code, expiresAt }` |
+| POST | `/t/<team>/invites` | người tạo team | → 201 `{ invite, code, expiresAt }`. Người khác: 403 `not-owner` (từ 0.3.1) |
 | POST | `/t/<team>/join` | người mới | Body `{ code, name }` → 201 `{ team, me }` |
 | GET | `/t/<team>/me` | thành viên | → 200 `{ team, me, members: [{ id, name, role, joinedAt }] }` |
 | POST | `/t/<team>/leave` | thành viên | → 200 `{ ok: true }`. Socket của người đó bị đóng (mã 4001), mọi người nhận `{ t: 'gone' }` |
@@ -180,7 +202,7 @@ Mã lỗi:
 | --- | --- | --- |
 | 400 | `bad-request` | Body không phải JSON, thiếu tên, mã mời sai định dạng |
 | 401 | `unsigned`, `bad-signature`, `clock`, `replay` | Thiếu chữ ký, chữ ký sai, đồng hồ lệch hơn 60 giây, gửi lại một yêu cầu cũ |
-| 403 | `not-member`, `create-token`, `not-owner` | Khoá không thuộc thành viên nào còn trong team; thiếu hoặc sai token tạo team; không phải người tạo team |
+| 403 | `not-member`, `create-token`, `not-owner` | Khoá không thuộc thành viên nào còn trong team; thiếu hoặc sai token tạo team; không phải người tạo team (đổi cài đặt, tạo link mời) |
 | 404 | `no-team`, `invite-unknown`, `not-found`, `no-room`, `no-knock`, `no-grant`, `code-unknown` | Team không tồn tại; mã mời không tồn tại; đường dẫn lạ; phòng không có (hoặc là phòng mình); không có lượt gõ cửa (đã trả lời / quá 10 phút); người đó không được xem; mã xem không tồn tại |
 | 409 | `exists`, `already-member`, `room-open`, `already-allowed`, `own-room` | Team id đã có; khoá này đã là thành viên; phòng đang mở; đã được xem; mã của phòng mình |
 | 410 | `invite-used`, `invite-expired`, `code-used`, `code-expired` | Mã mời / mã xem đã dùng hoặc hết hạn |
@@ -367,6 +389,11 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
   lần, hết hạn 10 phút, không dùng được cho phòng mình, giữ "luôn"; 10 mã sai thì tạm khoá; tối đa 5 mã chưa dùng;
   `roomView` / `cleanRoom` với `share`. Thêm vào `team-relay.test.mjs`: relay chỉ gửi người khi có người được xem, hết giờ
   thì thôi; giữ lượt gõ cửa và câu trả lời cho trang. `team-floors.test.mjs`: trạng thái `shared`.
+- Mời / vào team trên giao diện đã chạy tay: `wrangler dev` (hub 0.3.1) cộng ba server. C (thành viên thường) chạy
+  `team invite` bị từ chối `not-owner`, panel của C không có nút mời. A (người tạo team) bấm **Mời người vào team** ra
+  link. B chưa ở team: Cài đặt → Khác có ô vào team; dán chữ bậy thì báo lỗi; dán link của A thì vào được, nút Toà nhà
+  hiện ra, panel thấy phòng A và C. `team-protocol.test.mjs` thêm: thành viên thường tạo link mời bị 403 `not-owner`.
+  Kèm sửa lỗi cũ: màn hình dưới 1560px thì nút trong Cài đặt mất chữ (luật thu nhỏ thanh trên cùng). Script đã xoá.
 - Bước 4 đã chạy tay end-to-end: `wrangler dev` cộng ba server (A, B, C): B gõ cửa, A thấy lượt gõ, A cho 1 giờ, B thấy
   người trong phòng A còn C không; A tạo mã, C dùng được một lần, lần hai báo `code-used`; A thu hồi C thì C mất ngay;
   `team grants` in đúng nhật ký. Playwright trên trang: gõ cửa từ thẻ phòng, toast và số đỏ bên chủ phòng, trả lời "Hết
@@ -377,7 +404,8 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
 
 ## Giới hạn & rủi ro
 
-- **Chưa có admin.** Không ai xoá được thành viên khác; thành viên nào cũng mời được người mới. Phòng mặc định đóng nên
+- **Chưa có admin.** Không ai xoá được thành viên khác. Chỉ người tạo team mời được người mới (từ hub 0.3.1): người đó
+  mất máy và mất khoá khôi phục thì team không mời thêm được ai. Phòng mặc định đóng nên
   người vào nhầm chỉ thấy các phòng đang mở.
 - **Mất máy và mất khoá khôi phục** thì không lấy lại được đúng thành viên đó: phải nhờ người khác mời và vào lại như
   người mới.
