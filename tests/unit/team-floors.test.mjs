@@ -32,6 +32,8 @@ test('a room card shows offline, open or closed', () => {
   assert.equal(stateOf(room(1, { online: false, mode: 'open' })), 'offline');
   assert.equal(stateOf(room(1, { mode: 'open' })), 'open');
   assert.equal(stateOf(room(1, { mode: 'closed' })), 'closed');
+  assert.equal(stateOf(room(1, { mode: 'closed', access: { until: null } })), 'shared');   // (closed, but you were let in)
+  assert.equal(stateOf(room(1, { mode: 'open', access: { until: null } })), 'open');
   assert.equal(stateOf(room(1, { mode: 'weird' })), 'closed');
   assert.equal(stateOf(null), 'offline');
 });

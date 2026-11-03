@@ -95,12 +95,13 @@ test('hub relay: only members connect; a new member sees the others', needsSqlit
 test('hub relay: open rooms pass on people and events; closed rooms only counts', needsSqlite, async () => {
   const { core, people } = await teamOf('An', 'Bình'), a = people[0].id;
   const open = core.ingest(a, roomMsg({ mode: 'open', counts: { work: 1 }, people: [{ id: 'abcdef', status: 'work', act: 'edit', label: 'a.ts' }] }));
-  assert.equal(open[0].room.people[0].act, 'edit');
-  assert.equal(open[0].room.people[0].label, undefined);   // (the team's details setting is off)
+  assert.equal(open[0].to, people[1].id);   // (to each other member, as each may see it)
+  assert.equal(open[0].msg.room.people[0].act, 'edit');
+  assert.equal(open[0].msg.room.people[0].label, undefined);   // (the team's details setting is off)
   assert.deepEqual(core.ingest(a, roomMsg({ mode: 'open', counts: { work: 1 }, people: [{ id: 'abcdef', status: 'work', act: 'edit' }] })), []);   // unchanged: nothing to send
-  assert.deepEqual(core.ingest(a, JSON.stringify({ t: 'ev', list: [{ p: 'abcdef', type: 'read', ts: 1 }] })), [{ t: 'ev', member: a, list: [{ p: 'abcdef', type: 'read', ts: 1 }] }]);
+  assert.deepEqual(core.ingest(a, JSON.stringify({ t: 'ev', list: [{ p: 'abcdef', type: 'read', ts: 1 }] })), [{ to: people[1].id, msg: { t: 'ev', member: a, list: [{ p: 'abcdef', type: 'read', ts: 1 }] } }]);
   const closed = core.ingest(a, roomMsg({ mode: 'closed', counts: { work: 1 }, people: [{ id: 'abcdef', status: 'work' }] }));
-  assert.equal(closed[0].room.people, undefined);
+  assert.equal(closed[0].msg.room.people, undefined);
   assert.deepEqual(core.ingest(a, JSON.stringify({ t: 'ev', list: [{ p: 'abcdef', type: 'read', ts: 1 }] })), []);
   for (const junk of ['not json', JSON.stringify({ t: 'nope' }), 'x'.repeat(40_000), JSON.stringify(null)]) assert.deepEqual(core.ingest(a, junk), []);
 });
@@ -113,7 +114,7 @@ test('hub relay: only the creator turns details on, and then labels pass', needs
   assert.deepEqual(ok.body.policy, { details: true });
   assert.equal((await send(people[0].keys, 'GET', 'me')).body.me.owner, true);
   const out = core.ingest(people[1].id, roomMsg({ mode: 'open', people: [{ id: 'abcdef', status: 'work', label: 'a.ts' }] }));
-  assert.equal(out[0].room.people[0].label, 'a.ts');
+  assert.equal(out[0].msg.room.people[0].label, 'a.ts');
   assert.equal((await send(people[0].keys, 'POST', 'policy', { details: 'yes' })).body.error, 'bad-request');
 });
 
@@ -169,5 +170,46 @@ test('relay: sends a closed room, then an open one, and stops when paused', asyn
     assert.equal(s.closed, true);
     assert.equal(relay.state().connected, false);
     assert.equal(sockets.length, 1);   // paused: no new connection
+  } finally { relay.stop(); fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('relay: a closed room sends its people only while someone is let in, and keeps knocks and answers for the page', async () => {
+  process.env.OFFICE_TEAM_KEYSTORE = 'file';
+  const { createRelay } = await import('../../server/team/relay.mjs');
+  const { saveKeys } = await import('../../server/team/identity.mjs');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mo-relay-')), keys = await generateKeys(), clock = { t: 1_800_000_000_000 };
+  fs.writeFileSync(path.join(dir, 'team.json'), JSON.stringify({ hub: 'https://hub.test', teamId: randomId(16), teamName: 'T', memberId: 'm1', name: 'An', publicKey: keys.publicKey, keyStore: await saveKeys(dir, keys), room: { mode: 'closed' } }));
+  const sockets = [];
+  class FakeWS {
+    constructor(url) { this.url = url; this.sent = []; this.on = {}; sockets.push(this); }
+    addEventListener(k, f) { this.on[k] = f; }
+    send(t) { this.sent.push(JSON.parse(t)); }
+    close() { this.closed = true; }
+  }
+  const relay = createRelay({ dataDir: dir, sessions: () => [session()], WebSocket: FakeWS, now: () => clock.t });
+  relay.start();
+  try {
+    await new Promise((r) => setTimeout(r, 50));
+    const s = sockets[0], bình = { id: 'm2', name: 'Bình' };
+    s.on.open(); s.on.message({ data: JSON.stringify({ t: 'hello', me: { id: 'm1', name: 'An' }, policy: { details: false }, rooms: [], grants: [], knocks: [{ viewer: bình, at: clock.t }], asks: [{ room: 'm3', at: clock.t }] }) });
+    assert.equal(s.sent.at(-1).room.people, undefined);
+    assert.deepEqual([relay.state().knocks[0].viewer.id, relay.state().asks[0].room], ['m2', 'm3']);
+    // An lets Bình in for an hour: people (never more than the open-room view) and events go up
+    s.on.message({ data: JSON.stringify({ t: 'grants', list: [{ viewer: bình, until: clock.t + 3600_000 }] }) });
+    s.on.message({ data: JSON.stringify({ t: 'knocks', list: [] }) });
+    relay.flush();
+    assert.equal(s.sent.at(-1).room.people.length, 1);
+    assert.deepEqual(leaks(s.sent), []);
+    relay.notify({ k: 'ev', e: { sess: 'p123', type: 'read', label: 'x.ts', ts: 1 } }); relay.flush();
+    assert.equal(s.sent.at(-1).t, 'ev');
+    assert.deepEqual(relay.state().knocks, []);
+    // the hour is up: the next room sent has no people again
+    clock.t += 3600_000;
+    relay.notify({ k: 'sess' }); relay.flush();
+    assert.equal(s.sent.at(-1).room.people, undefined);
+    assert.deepEqual(relay.state().grants, []);
+    // an answer about a room An knocked on
+    s.on.message({ data: JSON.stringify({ t: 'access', room: 'm3', state: 'denied' }) });
+    assert.deepEqual([relay.state().asks, relay.state().answers.map((a) => [a.room, a.state])], [[], [['m3', 'denied']]]);
   } finally { relay.stop(); fs.rmSync(dir, { recursive: true, force: true }); }
 });
