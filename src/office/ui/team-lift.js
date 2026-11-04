@@ -1,7 +1,8 @@
 // Team mode's lift (headquarters plan only; markup: src/components/office/Stage.tsx #tw-lift, #tw-card): the buttons
 // down the stage's right edge that choose what you look at in the building (world/team-tower.js): the whole building,
 // a floor, or your own floor. A click on someone in another room opens a card about them: view only, nothing to do.
-// Things on the floor you are on (a plant, a lamp, the coffee machine) react to a click on your screen only.
+// Things on the floor you are on (a plant, a lamp, the coffee machine) react to a click on your screen only. The lift
+// in the building is another way round it: a click on its doors offers every floor, and the car takes you there.
 import { state } from '../core/state.js';
 import { $, HQ, el } from '../core/env.js';
 import { icon, TYPE_ICON } from './icons.js';
@@ -12,9 +13,10 @@ import { setHoverProp } from '../interact/props.js';
 import { PALETTE, hash } from '../people/workers.js';
 import { drS } from './session-drawer.js';
 import { queueUi } from './activity.js';
+import { sfx } from '../audio/sfx.js';
 import { t as tr } from '../../i18n/index.js';
 
-let lift, card, hint, shown = false, restored = false;
+let lift, card, hint, shown = false, restored = false, cardAt = 0;
 const VIEW_KEY = 'office-tower', HINT_KEY = 'office-tower-hint';
 const load = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const save = (k, v) => { try { localStorage.setItem(k, v); } catch { /* storage blocked: nothing remembered */ } };
@@ -65,6 +67,7 @@ export function towerClick(ray, ev) {
   const hit = pickTower(ray);
   if (!hit) { closeCard(); return false; }
   if (hit.kind === 'floor') { closeCard(); goTower(hit.floor); return true; }
+  if (hit.kind === 'prop' && hit.prop.kind === 'lift') { openLiftCard(ev); return true; }
   if (hit.kind === 'prop') { closeCard(); hit.prop.act(); return true; }
   if (hit.kind === 'none') { closeCard(); return true; }
   const r = towerRoom(hit.floor, hit.i);
@@ -101,7 +104,41 @@ function openCard(hit, r, ev) {
   if (!p) { const access = knockBlock(r, st); if (access) body.append(access); }
   body.append(el('p', 'tw-card-ro', tr('team.card.readOnly')));
   card.replaceChildren(head, body);
-  card.hidden = false;
+  showCard(ev);
+}
+// the lift's doors were clicked: the floors (as the lift down the right edge has them), the building, your own floor
+function openLiftCard(ev) {
+  const head = el('header', 'tw-card-h');
+  const ava = el('span', 'team-ava tw-pick-ic'); ava.append(icon('building'));
+  const names = el('div', 'team-room-names');
+  names.append(el('b', null, tr('team.tower.props.lift.name')), el('small', null, tr('team.lift.here', { n: view.floor })));
+  const x = el('button', 'dir-x tw-card-x'); x.type = 'button'; x.setAttribute('aria-label', tr('common.close')); x.append(icon('x')); x.addEventListener('click', closeCard);
+  head.append(ava, names, x);
+  const grid = el('div', 'tw-pick');
+  for (let f = towerFloors(); f >= 1; f--) {
+    const inRoom = [0, 1, 2, 3].map((i) => towerRoom(f, i)).filter(Boolean), on = inRoom.some((r) => stateOf(r) !== 'offline');
+    const b = pickBtn(String(f), String(f), view.floor === f); b.setAttribute('aria-label', tr('team.floor', { n: f }));
+    b.title = `${tr('team.floor', { n: f })}: ${inRoom.length ? inRoom.map((r) => r.member.name).join(', ') : tr('team.lift.emptyFloor')}`;
+    if (on) b.append(el('i', 'tw-lift-dot'));
+    grid.append(b);
+  }
+  const ends = el('div', 'tw-pick-ends');
+  ends.append(pickBtn('all', tr('team.lift.allShort'), false, 'building'), pickBtn('mine', tr('team.lift.mineShort'), false, 'home'));
+  const body = el('div', 'tw-card-b');
+  body.append(grid, ends, el('p', 'tw-card-ro', tr('team.tower.local')));
+  card.replaceChildren(head, body);
+  showCard(ev);
+  sfx.play('click');
+}
+function pickBtn(to, label, sel, ic) {
+  const b = el('button', `tw-pick-b${sel ? ' is-sel' : ''}`); b.type = 'button'; b.dataset.to = to; b.setAttribute('aria-pressed', String(sel));
+  if (ic) b.append(icon(ic));
+  b.append(el('span', null, label));
+  if (sel) b.disabled = true;   // (you are here)
+  return b;
+}
+function showCard(ev) {
+  card.hidden = false; cardAt = performance.now();
   // next to the click, inside the stage, left of the lift
   const box = card.parentElement.getBoundingClientRect(), w = card.offsetWidth || 280, h = card.offsetHeight || 160;
   const left = Math.min(box.width - w - (lift.offsetWidth + 28), Math.max(12, (ev?.clientX ?? box.left + box.width / 2) - box.left + 14));   // (never over the lift)
@@ -110,17 +147,20 @@ function openCard(hit, r, ev) {
 }
 const act = (type) => (tr(`team.act.${type}`) === `team.act.${type}` ? tr('team.act.other') : tr(`team.act.${type}`));
 function closeCard() { if (card) card.hidden = true; }
+// a choice from the lift's card or the lift down the right edge: there (your own sessions live on your own floor)
+function go(to) {
+  closeCard(); closeHint();
+  if (to !== 'mine' && state.selectedId) { state.selectedId = null; state.subView = null; drS.hidden = true; queueUi(); }
+  goTower(to === 'mine' || to === 'all' ? to : Number(to));
+}
 
 export function setup() {
   lift = $('tw-lift'); card = $('tw-card'); hint = $('tw-hint');
   hint?.querySelector('[data-close]')?.addEventListener('click', closeHint);
   if (!lift || !HQ) return;
-  lift.addEventListener('click', (e) => {
-    const b = e.target.closest('[data-to]'); if (!b) return;
-    closeCard(); closeHint();
-    if (b.dataset.to !== 'mine' && state.selectedId) { state.selectedId = null; state.subView = null; drS.hidden = true; queueUi(); }   // (a session of yours is on your own floor)
-    goTower(b.dataset.to === 'mine' || b.dataset.to === 'all' ? b.dataset.to : Number(b.dataset.to));
-  });
+  lift.addEventListener('click', (e) => { const b = e.target.closest('[data-to]'); if (b) go(b.dataset.to); });
+  // (a tap's own click comes a moment after the card opens under the finger on a narrow screen: not a choice)
+  card?.addEventListener('click', (e) => { const b = e.target.closest('.tw-pick-b[data-to]'); if (b && !b.disabled && performance.now() - cardAt > 400) go(b.dataset.to); });
   addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCard(); });
   // while you look at the building, your own office's labels (names, bubbles, place chips) stay out of the way
   onViewHooks.push((v) => {

@@ -19,6 +19,7 @@ import { fitText } from '../scene/blocks.js';
 import { gridTex, plankTex, speckTex } from './pro/pieces.js';
 import { furnishFloor, pathTo, roomPlan } from './tower-floor.js';
 import { BREAK_SEATS, FLOOR_H, TOWER_Y0, floorY, floorsOf, padFloors, seatPeople, seesIn, silhouettes, stateOf, themeOf } from '../../shared/team-floors.js';
+import { sfx } from '../audio/sfx.js';
 import { t as tr } from '../../i18n/index.js';
 
 const X0 = -8, X1 = 14, Z0 = WING.z0, Z1 = WING.z1, CX = (X0 + X1) / 2, CZ = (Z0 + Z1) / 2;
@@ -60,7 +61,8 @@ const breakOf = new Map(); // member id -> Map person id -> break-corner seat, f
 let detail = null;         // the floor you are on, furnished: { F, D } (world/tower-floor.js)
 const chars = new Map();   // `${member}/${person}` -> { root, P, anim, seed, seat, room, floor }
 export const view = { mode: 'mine', floor: 0 };
-let minZoom0 = 0, cabY = 0, nightShown = null, liftShown = '';
+let minZoom0 = 0, cabY = 0, nightShown = null, liftShown = '', liftMoving = false;
+const _lb = new THREE.Box3(), _lp = new THREE.Vector3();
 
 /* ---------- pieces ---------- */
 function materials() {
@@ -157,7 +159,11 @@ function buildFloor(f) {
   const roomHits = DEPTS.map((d, i) => { const m = put(g, new THREE.Mesh(M.plane, M.hit), (d.x0 + d.x1) / 2, 0.02, d.cz); m.scale.set(d.x1 - d.x0, 1, d.z1 - d.z0); m.userData.tw = { kind: 'room', floor: f.n, i }; return m; });
   const floorHit = block(g, M.hit, X1 - X0, FLOOR_H, Z1 - Z0, CX, FLOOR_H / 2 - 0.3, CZ); floorHit.userData.tw = { kind: 'floor', floor: f.n };
   // this floor's piece of the lift shaft, slab to slab (a floor lifted away takes its piece along)
-  const lift = { doors: liftPiece(g, INNER), open: 0 };
+  const lg = new THREE.Group(); lg.name = 'lift'; g.add(lg);
+  const lift = { g: lg, doors: liftPiece(lg, INNER), open: 0 };
+  // pointing at it: its outline (the doors, their frame's display and the button) and what a click does (ui/team-lift.js)
+  lift.prop = { id: `lift${f.n}`, kind: 'lift', name: tr('team.tower.props.lift.name'), hint: `${tr('team.tower.props.lift.hint')} · ${tr('team.tower.local')}`,
+    meshes: lg.children.filter((m) => m.isMesh && !m.isInstancedMesh && m.material !== M.shaftGlass), act: () => {} };
   // the floor's directory beside the lift: "Floor n" and its four rooms
   const dir = canvasPlate(512, 360);
   const dirM = new THREE.MeshBasicMaterial({ map: dir.tex, toneMapped: false });
@@ -494,6 +500,12 @@ export function pickTower(ray) {
   const objs = [...F.roomHits];
   for (const c of chars.values()) objs.push(c.root);
   const hit = ray.intersectObjects(objs, true)[0], info = hit?.object.userData.tw || null;
+  // the lift: pick a floor (unless someone stands in front of it)
+  const ld = ray.ray.intersectBox(_lb.setFromObject(F.lift.g), _lp) ? ray.ray.origin.distanceTo(_lp) : Infinity;
+  if (ld < (hit?.distance ?? Infinity) - 0.3 || (ld < Infinity && info?.kind === 'room')) {
+    const pp0 = detail?.F === F ? detail.D.pick(ray.ray) : null;
+    if (!pp0 || ld <= pp0.d) return { kind: 'prop', floor: F.n, prop: F.lift.prop };
+  }
   // something to click (a plant, the coffee machine), unless someone stands in front of it
   const pp = detail?.F === F ? detail.D.pick(ray.ray) : null;
   if (pp && (!info || info.kind === 'room' || pp.d < hit.distance - 0.3)) {
@@ -550,6 +562,8 @@ export function updateTower(dt, t) {
     const at = cabY < TOWER_Y0 / 2 ? 0 : Math.round((cabY - TOWER_Y0) / FLOOR_H) + 1, moving = Math.abs(goal - cabY) > 0.05;
     const text = (moving ? (goal > cabY ? '▲ ' : '▼ ') : '') + (at ? String(at) : 'G');
     if (text !== liftShown) { liftShown = text; drawLiftDisplay(text); }
+    if (liftMoving && !moving && view.mode === 'floor') sfx.play('ding');   // (there: the doors open)
+    liftMoving = moving;
     for (const F of floors) {
       const want = !moving && view.mode === 'floor' && F.n === view.floor ? 1 : 0;
       if (F.lift.open !== want) { F.lift.open = THREE.MathUtils.clamp(F.lift.open + (want ? 1 : -1) * dt * 1.6, 0, 1); setDoors(F.lift.doors, F.lift.open); }
@@ -584,6 +598,12 @@ export function setup() {
         return { floor: detail.F.n, theme: detail.F.theme, props: detail.D.props.map((p) => ({ id: p.id, kind: p.kind, ...at(p) })), chars: [...chars.values()].map((c) => c.st), meshes: drawn(detail.D.g) };
       },
       prop(id) { detail?.D.props.find((p) => p.id === id)?.act(); },
+      // what a click at (x, y) on the page lands on in the building (pickTower)
+      pickAt(x, y) {
+        const r = document.getElementById('stage').getBoundingClientRect(), rc = new THREE.Raycaster();
+        rc.setFromCamera(new THREE.Vector2(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1), camera);
+        const h = pickTower(rc); return h && { kind: h.kind, prop: h.prop?.kind, floor: h.floor, i: h.i };
+      },
     };
     const drawn = (root) => { let n = 0; root.traverseVisible((o) => { if (o.isMesh) n++; }); return n; };
     window.__office.tower.drawn = () => drawn(scene);

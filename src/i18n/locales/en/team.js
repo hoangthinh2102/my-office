@@ -86,6 +86,7 @@ export default {
     hint: 'The lift on the right of the office goes up to each floor.',
     notHq: "The 3D building is in the Headquarters office (Settings → Office).",
     emptyFloor: 'Empty for now: invite your teammates (Building → Invite someone to the team)',
+    here: "You're on floor {n} · where to?",
     free: 'Free',
   },
   // a team floor's furniture (world/tower-floor.js): what pointing at it says; a click plays on your screen only
@@ -96,6 +97,7 @@ export default {
     props: {
       desk: { name: 'Desk {n}', busy: '{who} · {what} · click to see', empty: 'Free desk', closed: 'Closed room: you can’t see who sits where', hint: '' },
       plant: { name: 'Pot plant', hint: 'Give the leaves a little shake' },
+      lift: { name: 'Lift', hint: 'Click to pick a floor' },
       board: { name: 'Sprint board', hint: 'Just decoration: the room card shows the real work' },
       cabinet: { name: 'Low cabinet', hint: 'Give it a little bounce' },
       sofa: { name: 'Sofa', hint: 'Break corner: whoever is resting comes to sit here' },

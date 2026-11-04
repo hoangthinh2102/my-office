@@ -141,6 +141,11 @@ Chỉ ở kiểu văn phòng **Tập đoàn** (`hq`); các kiểu khác chỉ c�
   máy trên mái. Mặt hướng vào phòng có dải kính để thấy cabin chạy. Cabin tới tầng đang xem thì cửa tầng đó mở; ở toàn
   nhà thì cabin về mặt đất. Bảng số trên mọi tầng cùng hiện chỗ cabin ("G" ở mặt đất, "▲ 3" khi đang lên). Thang ở sảnh
   giữ hoạt cảnh riêng (người mới đi thang lên).
+- **Đi thang máy** (`openLiftCard` trong `ui/team-lift.js`): trỏ vào cửa thang ở tầng đang xem thì có viền sáng và tên
+  "Thang máy · Bấm để chọn tầng"; bấm thì một thẻ nhỏ bật ra cạnh đó: các tầng (tầng đang đứng tô sáng, chấm xanh là có
+  người online), **Toà nhà**, **Của bạn**. Chọn thì cửa đóng, cabin chạy, tới nơi kêu "ding" và cửa tầng mới mở (đổi
+  tầng bằng thang bên phải cũng vậy). Esc hoặc bấm chỗ khác thì đóng thẻ. Người đứng trước cửa thang thì bấm trúng người.
+  Trên màn hình hẹp thẻ bật ra dưới ngón tay, nên cú click đi kèm cú chạm (trong 0,4 giây đầu) không được tính là chọn.
 - **Ba kiểu tầng**, lần lượt từ tầng 1 (`themeOf` trong `src/shared/team-floors.js`, ai xem cũng thấy giống nhau):
   *Studio* (sofa, tủ thấp, ghế băng ở hành lang, sàn hành lang lát gạch), *Khu vườn* (ghế lười, bồn cây, tường rêu,
   nhiều cây, sàn gỗ sáng), *Thư viện* (ghế bành, đèn đọc sách, kệ sách thấp, bể cá ở hành lang, sàn gỗ tối).
