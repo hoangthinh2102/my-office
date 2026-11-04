@@ -20,6 +20,8 @@ import { gridTex, plankTex, speckTex } from './pro/pieces.js';
 import { furnishFloor, pathTo, roomPlan } from './tower-floor.js';
 import { BREAK_SEATS, FLOOR_H, TOWER_Y0, floorY, floorsOf, padFloors, seatPeople, seesIn, silhouettes, stateOf, themeOf } from '../../shared/team-floors.js';
 import { sfx } from '../audio/sfx.js';
+import { PROPS, hoverProp, propMeshes, setHoverProp } from '../interact/props.js';
+import { signBeside } from './pro/wing.js';
 import { t as tr } from '../../i18n/index.js';
 
 const X0 = -8, X1 = 14, Z0 = WING.z0, Z1 = WING.z1, CX = (X0 + X1) / 2, CZ = (Z0 + Z1) / 2;
@@ -54,6 +56,7 @@ const LIFT_DOOR = { half: 0.5, h: 2.15 };   // (as the lobby's: two leaves, 1 m 
 
 let M = null;              // shared materials and geometry, made the first time the building is needed
 let tower = null, roof = null, columns = null, cab = null;
+let ground = null;         // the lift's landing on the ground, at the end of the wing's corridor A: there while you are in a team
 let floors = [];           // [{ n, y, g, rooms: [RoomView|null], inst, hits, label, dir }]
 let layoutKey = '';
 const seatsOf = new Map(); // member id -> Map person id -> seat (kept across updates)
@@ -61,7 +64,7 @@ const breakOf = new Map(); // member id -> Map person id -> break-corner seat, f
 let detail = null;         // the floor you are on, furnished: { F, D } (world/tower-floor.js)
 const chars = new Map();   // `${member}/${person}` -> { root, P, anim, seed, seat, room, floor }
 export const view = { mode: 'mine', floor: 0 };
-let minZoom0 = 0, cabY = 0, nightShown = null, liftShown = '', liftMoving = false;
+let minZoom0 = 0, cabY = 0, nightShown = null, liftShown = '', liftMoving = false, liftT = 0, liftHeld = null;
 const _lb = new THREE.Box3(), _lp = new THREE.Vector3();
 
 /* ---------- pieces ---------- */
@@ -160,7 +163,7 @@ function buildFloor(f) {
   const floorHit = block(g, M.hit, X1 - X0, FLOOR_H, Z1 - Z0, CX, FLOOR_H / 2 - 0.3, CZ); floorHit.userData.tw = { kind: 'floor', floor: f.n };
   // this floor's piece of the lift shaft, slab to slab (a floor lifted away takes its piece along)
   const lg = new THREE.Group(); lg.name = 'lift'; g.add(lg);
-  const lift = { g: lg, doors: liftPiece(lg, INNER), open: 0 };
+  const lift = { g: lg, doors: liftPiece(lg, INNER), open: 0, y, until: 0, at: f.n };
   // pointing at it: its outline (the doors, their frame's display and the button) and what a click does (ui/team-lift.js)
   lift.prop = { id: `lift${f.n}`, kind: 'lift', name: tr('team.tower.props.lift.name'), hint: `${tr('team.tower.props.lift.hint')} · ${tr('team.tower.local')}`,
     meshes: lg.children.filter((m) => m.isMesh && !m.isInstancedMesh && m.material !== M.shaftGlass), act: () => {} };
@@ -239,15 +242,26 @@ function drawLiftDisplay(text) {
   tex.needsUpdate = true;
 }
 
-function buildShell(n) {
-  // columns carrying the building over the wing's open sides (seen from outside only), the lift's cab, the roof
-  const g = new THREE.Group(); g.name = 'team-shell'; tower.add(g);
-  const cols = [[X1, Z0], [X1, CZ], [X1, Z1], [CX, Z1], [X0, Z1]].map(([x, z]) => [0.36, TOWER_Y0 - 0.3, 0.36, x, (TOWER_Y0 - 0.3) / 2, z]);
-  columns = boxes(g, M.column, cols);
-  const top = floorY(n + 1);
+// a storey of shaft with no landing (between the ground's and floor 1's): the clad walls and the glass strip only
+function shaftPiece(g, y0, h) {
+  const { x0, x1, z0, z1 } = LIFT, w = x1 - x0, d = z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, t = 0.1, strip = 0.9;
+  boxes(g, M.clad, [
+    [w, h, t, cx, y0 + h / 2, z0 + t / 2], [t, h, d, x0 + t / 2, y0 + h / 2, cz], [0.12, h, d, x1 - 0.06, y0 + h / 2, cz],
+    ...[-1, 1].map((sd) => [(w - strip) / 2, h, t, cx + sd * (strip + (w - strip) / 2) / 2, y0 + h / 2, z1 - t / 2]),
+  ]);
+  pane(g, M.shaftGlass, cx - strip / 2, z1 - 0.05, cx + strip / 2, z1 - 0.05, h, y0);
+}
+
+/* The lift on the ground: a landing at the end of the wing's corridor A (the dead end, where nobody walks), 3 m high
+   with a cap like the lobby's, the car waiting in it. It is there whenever you are in a team, on your own floor too
+   and walking in first person, where it stands in the way like a wall and calls the car for a ride up. */
+const GROUND_H = 3.0;
+function ensureGround() {
+  if (ground) return;
+  const g = new THREE.Group(); g.name = 'team-lift-ground'; g.userData.noMerge = g.userData.noCollide = true; scene.add(g);
   const sw = LIFT.x1 - LIFT.x0, sd = LIFT.z1 - LIFT.z0, scx = (LIFT.x0 + LIFT.x1) / 2, scz = (LIFT.z0 + LIFT.z1) / 2;
-  // the shaft from the ground up to floor 1, with its own landing on the ground (at the end of the wing's corridor A)
-  liftPiece(g, TOWER_Y0 - 0.3);   // (its doors stay shut: the car only stops on the ground when nobody is watching a floor)
+  const doors = liftPiece(g, GROUND_H);
+  const cap = block(g, M.cap, sw + 0.12, 0.1, sd + 0.12, scx, GROUND_H + 0.05, scz);   // (only on your own floor: else the shaft goes on up)
   block(g, M.cap, sw + 0.02, 0.12, sd + 0.02, scx, 0.06, scz);
   // the car, as the lobby's: light side walls, a wood back with a rail, a lit ceiling
   const cw = sw - 0.3, cd = sd - 0.3;
@@ -257,6 +271,58 @@ function buildShell(n) {
   for (const s of [-1, 1]) block(cab, M.carWall, cw, 2.2, 0.03, 0, 1.18, s * cd / 2);
   block(cab, M.steel, 0.04, 0.04, cd - 0.3, -cw / 2 + 0.08, 0.95, 0);
   block(cab, M.cabLight, cw - 0.3, 0.02, cd - 0.3, 0, 2.29, 0);
+  ground = { g, doors, cap, open: 0, y: 0, until: 0, at: 0 };
+  // a thing of your own floor (interact/props.js): pointed at, clicked, or E in first person, it calls the car down
+  const meshes = g.children.filter((m) => m.isMesh && !m.isInstancedMesh && m.material !== M.shaftGlass && m.material !== M.cap);
+  const box = new THREE.Box3(); for (const m of meshes) box.expandByObject(m);
+  ground.prop = { id: 'teamLift', name: tr('team.tower.props.lift.name'), hint: tr('team.tower.props.lift.ground'), fpLabel: tr('team.tower.props.lift.fp'),
+    meshes, box, boxes: meshes.map((m) => new THREE.Box3().setFromObject(m)), center: box.getCenter(new THREE.Vector3()), top: box.max.y,
+    act: () => callLift(0, () => liftHooks.pick?.(0)) };
+  for (const m of meshes) { m.userData.prop = ground.prop; propMeshes.push(m); }
+  PROPS.set(ground.prop.id, ground.prop);
+  signBeside(true);
+  liftHooks.solid?.(LIFT);   // (what you walk into, first person: its whole footprint)
+}
+function dropGround() {
+  if (!ground) return;
+  if (hoverProp === ground.prop) setHoverProp(null);
+  PROPS.delete(ground.prop.id);
+  for (const m of ground.prop.meshes) { const i = propMeshes.indexOf(m); if (i >= 0) propMeshes.splice(i, 1); }
+  dispose(ground.g); scene.remove(ground.g); ground = null; cab = null; cabY = 0; liftHeld = null;
+  signBeside(false);
+  liftHooks.solid?.(null);
+}
+/** What team-tower needs from the UI, set by it (ui/team-lift.js): the floors to pick from (where: 0 the ground, else a
+ *  floor), the ground landing's footprint as a wall for first person (null: it is gone). */
+export const liftHooks = { pick: null, solid: null };
+/** A click on the lift's doors (where: 0 the ground, else a floor): they open, with a ding when they were shut, and
+ *  stay open a few seconds; then (half a second later when they had to open) `then` runs: the floors to pick from. */
+export function callLift(where, then) {
+  const L = where ? floors[where - 1]?.lift : ground;
+  if (!L) return;
+  const here = Math.abs(cabY - L.y) < 0.05;
+  if (here && L.open < 0.5) sfx.play('ding');
+  const wait = here && L.open > 0.9 ? 0 : 500;
+  L.until = liftT + 4;
+  if (then) setTimeout(then, wait);
+}
+/** The floors' card is open for this landing (it keeps its doors open), or (null) not any more: they shut soon after. */
+export function holdLift(where) {
+  if (liftHeld === where) return;
+  const L = liftHeld == null ? null : liftHeld ? floors[liftHeld - 1]?.lift : ground;
+  if (L) L.until = Math.max(L.until, liftT + 2.5);
+  liftHeld = where;
+}
+
+function buildShell(n) {
+  // columns carrying the building over the wing's open sides (seen from outside only), the lift's cab, the roof
+  const g = new THREE.Group(); g.name = 'team-shell'; tower.add(g);
+  const cols = [[X1, Z0], [X1, CZ], [X1, Z1], [CX, Z1], [X0, Z1]].map(([x, z]) => [0.36, TOWER_Y0 - 0.3, 0.36, x, (TOWER_Y0 - 0.3) / 2, z]);
+  columns = boxes(g, M.column, cols);
+  const top = floorY(n + 1);
+  const sw = LIFT.x1 - LIFT.x0, sd = LIFT.z1 - LIFT.z0, scx = (LIFT.x0 + LIFT.x1) / 2, scz = (LIFT.z0 + LIFT.z1) / 2;
+  // the shaft from the ground landing (ensureGround) up to floor 1
+  shaftPiece(g, GROUND_H, TOWER_Y0 - 0.3 - GROUND_H);
   // the roof: a parapet round it, the machines on it
   roof = new THREE.Group(); roof.position.y = top; g.add(roof);
   block(roof, M.slab, X1 - X0 + 0.3, 0.3, Z1 - Z0 + 0.3, CX, -0.15, CZ);
@@ -358,8 +424,8 @@ export function syncTower(t) {
   const rooms = t?.inTeam ? t.rooms || [] : [];
   // in a team, there is always a whole building to look at: at least MIN_FLOORS floors, free rooms where nobody is yet
   const fl = t?.inTeam ? padFloors(floorsOf(rooms)) : [];
-  if (!fl.length) { if (tower) { clearChars(); dropDetail(); dispose(tower); scene.remove(tower); tower = null; floors = []; layoutKey = ''; } if (view.mode !== 'mine') goTower('mine'); return; }
-  materials();
+  if (!fl.length) { if (tower) { clearChars(); dropDetail(); dispose(tower); scene.remove(tower); tower = null; floors = []; layoutKey = ''; } dropGround(); if (view.mode !== 'mine') goTower('mine'); return; }
+  materials(); ensureGround();
   // (the floor count too: one floor of empty rooms must not look like "nothing built yet", '')
   const key = `${fl.length}#` + fl.map((f) => f.rooms.map((r) => r.member.id).join(',')).join('|');
   if (key !== layoutKey) { layoutKey = key; rebuild(fl); }
@@ -445,6 +511,7 @@ function syncChars() {
 }
 
 function applyView() {
+  if (ground) ground.cap.visible = view.mode === 'mine';
   if (!tower) return;
   const m = view.mode;
   tower.visible = m !== 'mine';
@@ -544,7 +611,31 @@ function walk(c, dt, t) {
     if (c.st === 'out') { c.st = 'break'; c.root.rotation.y = seats[c.brk].ry; } else { c.st = 'desk'; c.root.rotation.y = dk.ry; }
   }
 }
+/* The lift, as the lobby's (world/entrance.js): the car goes where you look (a floor; else it waits on the ground).
+   It leaves only with every door shut; where it stops a ding, its doors open and shut again 4 s later, unless someone
+   holds them (callLift, holdLift: the floors' card is open). On your own floor the car is on the ground at once. */
+function updateLift(dt) {
+  if (!cab) return;
+  liftT += dt;
+  if (view.mode === 'mine' && cabY) { cabY = 0; cab.position.y = 0; for (const F of floors) { F.lift.open = 0; setDoors(F.lift.doors, 0); } }
+  const goal = view.mode === 'floor' ? floorY(view.floor) : 0, leaving = Math.abs(goal - cabY) > 0.05;
+  let shut = true;
+  for (const L of floors.map((F) => F.lift).concat(ground)) {
+    const want = !leaving && Math.abs(cabY - L.y) < 0.05 && (liftHeld === L.at || liftT < L.until) ? 1 : 0;
+    if (L.open !== want) { L.open = THREE.MathUtils.clamp(L.open + (want ? 1 : -1) * dt * 1.6, 0, 1); setDoors(L.doors, L.open); }
+    if (L.open > 0.01) shut = false;
+  }
+  const moving = leaving && shut;
+  if (moving) { cabY += (goal - cabY) * Math.min(1, dt * 2.2); if (Math.abs(goal - cabY) <= 0.05) cabY = goal; cab.position.y = cabY; }
+  // there: a ding, the doors open (a floor you came to look at; on the ground only when called)
+  if (liftMoving && !leaving && view.mode === 'floor') { sfx.play('ding'); const F = floors[view.floor - 1]; if (F) F.lift.until = liftT + 4; }
+  liftMoving = moving || (liftMoving && leaving);
+  const at = cabY < TOWER_Y0 / 2 ? 0 : Math.round((cabY - TOWER_Y0) / FLOOR_H) + 1;
+  const text = (Math.abs(goal - cabY) > 0.05 ? (goal > cabY ? '▲ ' : '▼ ') : '') + (at ? String(at) : 'G');
+  if (text !== liftShown) { liftShown = text; drawLiftDisplay(text); }
+}
 export function updateTower(dt, t) {
+  updateLift(dt);
   if (!tower || view.mode === 'mine') return;
   // your own office's things need your own floor: picking a session or walking in takes you back down
   if (state.selectedId || state.photo) { goTower('mine'); return; }
@@ -555,20 +646,6 @@ export function updateTower(dt, t) {
     c.root.position.y = applyChibiPose(c.P, pose, dt) + (c.st === 'break' ? SIT_UP[detail?.F.theme] || 0 : 0);
   }
   if (detail) detail.D.update(dt, t);
-  // the lift glides to the floor you are on (else it waits on the ground); there its doors open
-  const goal = view.mode === 'floor' ? floorY(view.floor) : 0;
-  if (cab && Math.abs(goal - cabY) > 0.005) { cabY += (goal - cabY) * Math.min(1, dt * 2.2); cab.position.y = cabY; }
-  if (cab) {
-    const at = cabY < TOWER_Y0 / 2 ? 0 : Math.round((cabY - TOWER_Y0) / FLOOR_H) + 1, moving = Math.abs(goal - cabY) > 0.05;
-    const text = (moving ? (goal > cabY ? '▲ ' : '▼ ') : '') + (at ? String(at) : 'G');
-    if (text !== liftShown) { liftShown = text; drawLiftDisplay(text); }
-    if (liftMoving && !moving && view.mode === 'floor') sfx.play('ding');   // (there: the doors open)
-    liftMoving = moving;
-    for (const F of floors) {
-      const want = !moving && view.mode === 'floor' && F.n === view.floor ? 1 : 0;
-      if (F.lift.open !== want) { F.lift.open = THREE.MathUtils.clamp(F.lift.open + (want ? 1 : -1) * dt * 1.6, 0, 1); setDoors(F.lift.doors, F.lift.open); }
-    }
-  }
   // lights: warm in every room someone is in, brighter after dark
   if (nightShown !== night) {
     nightShown = night;
@@ -598,6 +675,13 @@ export function setup() {
         return { floor: detail.F.n, theme: detail.F.theme, props: detail.D.props.map((p) => ({ id: p.id, kind: p.kind, ...at(p) })), chars: [...chars.values()].map((c) => c.st), meshes: drawn(detail.D.g) };
       },
       prop(id) { detail?.D.props.find((p) => p.id === id)?.act(); },
+      // the lift: where the car is, how open each landing's doors are (the ground's, then floor 1 up), which one is held
+      get lift() { return { cabY: Math.round(cabY * 100) / 100, ground: ground ? Math.round(ground.open * 100) / 100 : null, doors: floors.map((F) => Math.round(F.lift.open * 100) / 100), held: liftHeld, text: liftShown }; },
+      groundPoint() {
+        if (!ground) return null;
+        const v = ground.prop.center.clone().project(camera), r = document.getElementById('stage').getBoundingClientRect();
+        return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
+      },
       // what a click at (x, y) on the page lands on in the building (pickTower)
       pickAt(x, y) {
         const r = document.getElementById('stage').getBoundingClientRect(), rc = new THREE.Raycaster();

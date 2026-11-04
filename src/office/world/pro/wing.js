@@ -86,6 +86,16 @@ export function credenza(x, z, ry = 0, parent = scene) {
   return g;
 }
 
+// the company's sign: on the wall at the end of corridor A, or, while a team's lift stands there (world/team-tower.js),
+// a lower plate on the low wall beside it
+let sign = null;
+export function signBeside(on) {
+  if (!sign) return;
+  const { back, face } = sign, cz = (WING.corA[0] + WING.corA[1]) / 2;
+  if (on) { back.position.set(-4.85, 0.74, WING.z0 + 0.085); back.rotation.y = Math.PI / 2; back.scale.set(1, 0.24, 1); face.position.set(-4.85, 0.74, WING.z0 + 0.105); face.rotation.y = 0; }
+  else { back.position.set(-7.985, 1.35, cz); back.rotation.y = 0; back.scale.set(1, 1, 1); face.position.set(-7.965, 1.95, cz); face.rotation.y = Math.PI / 2; }
+}
+
 function buildWing() {
   const Z0 = WING.z0, Z1 = WING.z1, mid = (Z0 + Z1) / 2, len = Z1 - Z0;
   /* shell: the slab, and the left outer wall carried on from the core's */
@@ -132,9 +142,10 @@ function buildWing() {
   makeSofa(10.2, 25.35, 1.9, 0, '#6B4F3A', ['#BDE0FE', '#E2B04A']);
 
   /* corridors: the company's sign at the end of corridor A, plants where the corridors end */
-  put(scene, rbox(0.03, 2.7, 1.6, mat('#2F4A3D', { roughness: 0.9 }), 0.005), -7.985, 1.35, (WING.corA[0] + WING.corA[1]) / 2);
-  { const m = new THREE.Mesh(new THREE.PlaneGeometry(1.36, 0.42), new THREE.MeshBasicMaterial({ map: plateTex(tr('world.dept.hq'), tr('world.dept.hqSub'), { bg: '#2F4A3D', fg: '#F3EFE8', sub: '#B9D6C4' }) }));
-    m.position.set(-7.965, 1.95, (WING.corA[0] + WING.corA[1]) / 2); m.rotation.y = Math.PI / 2; scene.add(m); }
+  { const back = rbox(0.03, 2.7, 1.6, mat('#2F4A3D', { roughness: 0.9 }), 0.005);
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(1.36, 0.42), new THREE.MeshBasicMaterial({ map: plateTex(tr('world.dept.hq'), tr('world.dept.hqSub'), { bg: '#2F4A3D', fg: '#F3EFE8', sub: '#B9D6C4' }) }));
+    back.userData.noMerge = face.userData.noMerge = true; scene.add(back, face);
+    sign = { back, face }; signBeside(false); }
   potPlant(13.55, 9.9, 1.1, 'monstera'); potPlant(2.7, 25.55, 0.95, 'bush'); potPlant(3.9, 25.55, 0.95, 'snake');
 }
 

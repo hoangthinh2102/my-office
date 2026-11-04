@@ -97,7 +97,7 @@ export default {
     props: {
       desk: { name: 'Desk {n}', busy: '{who} · {what} · click to see', empty: 'Free desk', closed: 'Closed room: you can’t see who sits where', hint: '' },
       plant: { name: 'Pot plant', hint: 'Give the leaves a little shake' },
-      lift: { name: 'Lift', hint: 'Click to pick a floor' },
+      lift: { name: 'Lift', hint: 'Click to pick a floor', ground: "Click to call it up to your team's building", fp: 'Call the lift up to the building' },
       board: { name: 'Sprint board', hint: 'Just decoration: the room card shows the real work' },
       cabinet: { name: 'Low cabinet', hint: 'Give it a little bounce' },
       sofa: { name: 'Sofa', hint: 'Break corner: whoever is resting comes to sit here' },

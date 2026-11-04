@@ -2,11 +2,13 @@
 // down the stage's right edge that choose what you look at in the building (world/team-tower.js): the whole building,
 // a floor, or your own floor. A click on someone in another room opens a card about them: view only, nothing to do.
 // Things on the floor you are on (a plant, a lamp, the coffee machine) react to a click on your screen only. The lift
-// in the building is another way round it: a click on its doors offers every floor, and the car takes you there.
+// in the building is another way round it: a click on its doors opens them and offers every floor, and the car takes
+// you there. Its landing on the ground (the end of the wing's corridor A) is there on your own floor too: clicked, or E
+// walking in first person, it calls the car down and offers the floors; you leave first person for the one you pick.
 import { state } from '../core/state.js';
 import { $, HQ, el } from '../core/env.js';
 import { icon, TYPE_ICON } from './icons.js';
-import { goTower, onViewHooks, pickTower, syncTower, towerFloors, towerRoom, view } from '../world/team-tower.js';
+import { callLift, goTower, holdLift, liftHooks, onViewHooks, pickTower, syncTower, towerFloors, towerRoom, view } from '../world/team-tower.js';
 import { stateOf } from '../../shared/team-floors.js';
 import { knockBlock } from './team-access.js';
 import { setHoverProp } from '../interact/props.js';
@@ -14,6 +16,7 @@ import { PALETTE, hash } from '../people/workers.js';
 import { drS } from './session-drawer.js';
 import { queueUi } from './activity.js';
 import { sfx } from '../audio/sfx.js';
+import { fp, rideOut, setSolid } from '../interact/first-person.js';
 import { t as tr } from '../../i18n/index.js';
 
 let lift, card, hint, shown = false, restored = false, cardAt = 0;
@@ -67,7 +70,7 @@ export function towerClick(ray, ev) {
   const hit = pickTower(ray);
   if (!hit) { closeCard(); return false; }
   if (hit.kind === 'floor') { closeCard(); goTower(hit.floor); return true; }
-  if (hit.kind === 'prop' && hit.prop.kind === 'lift') { openLiftCard(ev); return true; }
+  if (hit.kind === 'prop' && hit.prop.kind === 'lift') { const n = view.floor; closeCard(); callLift(n, () => view.floor === n && openLiftCard(n, ev)); return true; }
   if (hit.kind === 'prop') { closeCard(); hit.prop.act(); return true; }
   if (hit.kind === 'none') { closeCard(); return true; }
   const r = towerRoom(hit.floor, hit.i);
@@ -106,28 +109,30 @@ function openCard(hit, r, ev) {
   card.replaceChildren(head, body);
   showCard(ev);
 }
-// the lift's doors were clicked: the floors (as the lift down the right edge has them), the building, your own floor
-function openLiftCard(ev) {
+// the lift's doors were clicked (where: a floor, 0 the ground): the floors (as the lift down the right edge has them),
+// the building, your own floor; its doors stay open while the card is
+function openLiftCard(where, ev) {
   const head = el('header', 'tw-card-h');
   const ava = el('span', 'team-ava tw-pick-ic'); ava.append(icon('building'));
   const names = el('div', 'team-room-names');
-  names.append(el('b', null, tr('team.tower.props.lift.name')), el('small', null, tr('team.lift.here', { n: view.floor })));
+  names.append(el('b', null, tr('team.tower.props.lift.name')), el('small', null, tr('team.lift.here', { n: where || 'G' })));
   const x = el('button', 'dir-x tw-card-x'); x.type = 'button'; x.setAttribute('aria-label', tr('common.close')); x.append(icon('x')); x.addEventListener('click', closeCard);
   head.append(ava, names, x);
   const grid = el('div', 'tw-pick');
   for (let f = towerFloors(); f >= 1; f--) {
     const inRoom = [0, 1, 2, 3].map((i) => towerRoom(f, i)).filter(Boolean), on = inRoom.some((r) => stateOf(r) !== 'offline');
-    const b = pickBtn(String(f), String(f), view.floor === f); b.setAttribute('aria-label', tr('team.floor', { n: f }));
+    const b = pickBtn(String(f), String(f), where === f); b.setAttribute('aria-label', tr('team.floor', { n: f }));
     b.title = `${tr('team.floor', { n: f })}: ${inRoom.length ? inRoom.map((r) => r.member.name).join(', ') : tr('team.lift.emptyFloor')}`;
     if (on) b.append(el('i', 'tw-lift-dot'));
     grid.append(b);
   }
   const ends = el('div', 'tw-pick-ends');
-  ends.append(pickBtn('all', tr('team.lift.allShort'), false, 'building'), pickBtn('mine', tr('team.lift.mineShort'), false, 'home'));
+  ends.append(pickBtn('all', tr('team.lift.allShort'), !where && view.mode === 'all', 'building'), pickBtn('mine', tr('team.lift.mineShort'), !where && view.mode === 'mine', 'home'));
   const body = el('div', 'tw-card-b');
   body.append(grid, ends, el('p', 'tw-card-ro', tr('team.tower.local')));
   card.replaceChildren(head, body);
   showCard(ev);
+  holdLift(where);
   sfx.play('click');
 }
 function pickBtn(to, label, sel, ic) {
@@ -146,18 +151,22 @@ function showCard(ev) {
   card.style.left = `${left}px`; card.style.top = `${top}px`;
 }
 const act = (type) => (tr(`team.act.${type}`) === `team.act.${type}` ? tr('team.act.other') : tr(`team.act.${type}`));
-function closeCard() { if (card) card.hidden = true; }
+function closeCard() { if (card) card.hidden = true; holdLift(null); }
 // a choice from the lift's card or the lift down the right edge: there (your own sessions live on your own floor)
 function go(to) {
   closeCard(); closeHint();
   if (to !== 'mine' && state.selectedId) { state.selectedId = null; state.subView = null; drS.hidden = true; queueUi(); }
-  goTower(to === 'mine' || to === 'all' ? to : Number(to));
+  const there = () => goTower(to === 'mine' || to === 'all' ? to : Number(to));
+  // walking in first person (from the ground landing): a moment's black, then you are looking at it, out of first person
+  if (fp?.on && to !== 'mine') rideOut(there); else there();
 }
 
 export function setup() {
   lift = $('tw-lift'); card = $('tw-card'); hint = $('tw-hint');
   hint?.querySelector('[data-close]')?.addEventListener('click', closeHint);
   if (!lift || !HQ) return;
+  liftHooks.pick = (where) => { if (shown && (where ? view.mode === 'floor' && view.floor === where : view.mode !== 'floor')) openLiftCard(where); };
+  liftHooks.solid = (box) => setSolid('teamLift', box);   // (the ground landing: first person walks into it as a wall)
   lift.addEventListener('click', (e) => { const b = e.target.closest('[data-to]'); if (b) go(b.dataset.to); });
   // (a tap's own click comes a moment after the card opens under the finger on a narrow screen: not a choice)
   card?.addEventListener('click', (e) => { const b = e.target.closest('.tw-pick-b[data-to]'); if (b && !b.disabled && performance.now() - cardAt > 400) go(b.dataset.to); });

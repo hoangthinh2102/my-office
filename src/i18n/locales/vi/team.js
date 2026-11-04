@@ -96,7 +96,7 @@ export default {
     props: {
       desk: { name: 'Bàn {n}', busy: '{who} · {what} · bấm để xem', empty: 'Bàn trống', closed: 'Phòng đóng: không xem được ai ngồi đâu', hint: '' },
       plant: { name: 'Chậu cây', hint: 'Lay nhẹ cho lá rung' },
-      lift: { name: 'Thang máy', hint: 'Bấm để chọn tầng' },
+      lift: { name: 'Thang máy', hint: 'Bấm để chọn tầng', ground: 'Bấm gọi thang lên toà nhà của team', fp: 'Gọi thang lên toà nhà' },
       board: { name: 'Bảng sprint', hint: 'Bảng trang trí: việc thật của phòng xem ở thẻ phòng' },
       cabinet: { name: 'Tủ thấp', hint: 'Bấm cho nó nảy nhẹ' },
       sofa: { name: 'Sofa', hint: 'Góc nghỉ: ai đang nghỉ sẽ ra đây ngồi' },
