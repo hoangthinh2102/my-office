@@ -56,7 +56,8 @@ export default {
     confirmStepdown: 'Bấm lần nữa để thôi',
     lastAdmin: 'Bạn là admin duy nhất: cho một người khác làm admin trước.',
     otherAdmin: 'Chỉ họ tự thôi được',
-    done: { promote: '{name} giờ là admin.', remove: 'Đã xoá {name} khỏi team.', stepdown: 'Bạn không còn là admin.' },
+    rename: 'Đổi tên', renameLabel: 'Tên mới của bạn trong team', save: 'Lưu', cancel: 'Huỷ',
+    done: { promote: '{name} giờ là admin.', remove: 'Đã xoá {name} khỏi team.', stepdown: 'Bạn không còn là admin.', rename: 'Đã đổi tên thành {name}.' },
     failed: 'Không làm được: {why}',
     err: {
       'not-owner': 'Chỉ admin mới làm được việc này.',
@@ -66,6 +67,11 @@ export default {
       'already-admin': 'Người này đã là admin.',
       'not-admin': 'Bạn không còn là admin.',
       'no-member': 'Người này không còn trong team.',
+      'name-taken': 'Đã có người trong team dùng tên này. Chọn tên khác.',
+      'too-many-renames': 'Bạn vừa đổi tên nhiều lần. Thử lại sau 10 phút.',
+      'bad-name': 'Tên không được để trống.',
+      'bad-request': 'Tên không hợp lệ.',
+      'hub-old': 'Hub của team cần cập nhật (bản 0.5.0) để đổi tên. Nhờ người quản lý hub deploy lại.',
     },
   },
   lift: {

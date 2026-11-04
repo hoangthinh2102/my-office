@@ -206,6 +206,11 @@
 .team-mem-who .team-owner { margin-left: 2px; }
 .team-mem-acts { display: inline-flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
 .team-mem-hint { font-size: .7rem; color: var(--faint); }
+/* your own name, being changed */
+.team-mem.is-editing { grid-template-columns: auto minmax(0, 1fr); }
+.team-mem-rename { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.team-mem-in { flex: 1; min-width: 0; box-sizing: border-box; height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: 600 .8rem var(--font); }
+.team-mem-in:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .team-mem-b { all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; font-size: .72rem; font-weight: 600; padding: 4px 10px;
   border-radius: 8px; background: var(--card-2); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
 .team-mem-b:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--accent-line); }

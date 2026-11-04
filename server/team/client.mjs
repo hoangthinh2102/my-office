@@ -144,6 +144,18 @@ export function createTeamClient({ dataDir, fetch = globalThis.fetch }) {
     async stepDown() { return hubCall('POST', 'stepdown', {}); },
     /** Takes `member` out of the team: { members, me }. */
     async remove(member) { return hubCall('POST', 'remove', { member: String(member || '') }); },
+    /** Changes this member's own name, on the hub and here: { members, me }. A hub older than 0.5.0 can't: 'hub-old'. */
+    async rename(name) {
+      const clean = cleanName(name);
+      if (!clean) throw new TeamError('bad-name');
+      let out;
+      try { out = await hubCall('POST', 'rename', { name: clean }); } catch (e) {
+        throw e instanceof TeamError && e.code === 'not-found' ? new TeamError('hub-old', e.status) : e;
+      }
+      const s = await readState();
+      if (s && out.me?.name) await writeState({ ...s, name: out.me.name });
+      return out;
+    },
 
     // Closed rooms (step 4): knocking on someone's door, answering knocks on yours, view codes, who may look in.
     /** Asks to see `room`'s closed room. */

@@ -94,6 +94,62 @@ test('a team made before admins: its creator becomes the first admin when the hu
   assert.equal(await role(b.keys), 'member');
 });
 
+test('everyone renames themselves; no two members share a name; everyone hears it', needsSqlite, async () => {
+  const { send, clock, people: [a, b, c] } = await teamOf('An', 'Bình', 'Chi');
+  // Chi lets Bình look in and An is knocking: Chi's lists name them, so they come again with a new name
+  await send(c.keys, 'POST', 'knock', { room: b.id });
+  await send(b.keys, 'POST', 'answer', { viewer: c.id, grant: 'always' });
+  await send(c.keys, 'POST', 'knock', { room: a.id });
+  const out = await send(c.keys, 'POST', 'rename', { name: '  Chi   Nguyễn ' });
+  assert.equal(out.status, 200);
+  assert.equal(out.body.me.name, 'Chi Nguyễn');
+  assert.equal(out.body.members.find((m) => m.id === c.id).name, 'Chi Nguyễn');
+  assert.deepEqual(out.send.filter((o) => o.msg.t === 'members').map((o) => o.to).sort(), [a.id, b.id, c.id].sort());
+  assert.equal(out.send.find((o) => o.msg.t === 'grants' && o.to === b.id).msg.list[0].viewer.name, 'Chi Nguyễn');
+  assert.equal(out.send.find((o) => o.msg.t === 'knocks' && o.to === a.id).msg.list[0].viewer.name, 'Chi Nguyễn');
+  assert.equal((await send(a.keys, 'GET', 'me')).body.members.find((m) => m.id === c.id).name, 'Chi Nguyễn');
+
+  assert.equal((await send(b.keys, 'POST', 'rename', { name: 'an' })).body.error, 'name-taken');   // (any case)
+  assert.equal((await send(b.keys, 'POST', 'rename', { name: '   ' })).body.error, 'bad-request');
+  assert.equal((await send(b.keys, 'POST', 'rename', { member: a.id, name: 'Admin' })).body.me.id, b.id);   // (only ever your own name)
+  assert.equal((await send(a.keys, 'GET', 'me')).body.me.name, 'An');
+  assert.equal((await send(b.keys, 'POST', 'rename', { name: 'BÌNH' })).status, 200);   // (your own name in another case is fine)
+  const same = await send(b.keys, 'POST', 'rename', { name: 'BÌNH' });
+  assert.deepEqual([same.status, same.send], [200, undefined]);   // (no change: nobody is told)
+
+  // five changes in ten minutes (Admin, BÌNH, B0, B1, B9), then a pause
+  for (let i = 0; i < 2; i++) assert.equal((await send(b.keys, 'POST', 'rename', { name: `B${i}` })).status, 200);
+  assert.equal((await send(b.keys, 'POST', 'rename', { name: 'B9' })).status, 200);
+  assert.equal((await send(b.keys, 'POST', 'rename', { name: 'B10' })).body.error, 'too-many-renames');
+  clock.t += 10 * 60_000;
+  assert.equal((await send(b.keys, 'POST', 'rename', { name: 'B10' })).status, 200);
+});
+
+test('the office: a new name goes to the hub and into team.json; an old hub says so', needsSqlite, async () => {
+  process.env.OFFICE_TEAM_KEYSTORE = 'file';
+  const { createTeamClient } = await import('../../server/team/client.mjs');
+  const db = new DatabaseSync(':memory:'), sql = { exec: (q, ...b) => { const rows = db.prepare(q).all(...b); return { toArray: () => rows }; } };
+  const core = new TeamCore(sql), teamId = randomId(16);
+  let old = false;
+  const fetch = async (url, { method, headers, body }) => {
+    const u = new URL(url), action = u.pathname === '/teams' ? 'create' : u.pathname.split('/').pop();
+    if (old && action === 'rename') return new Response(JSON.stringify({ error: 'not-found' }), { status: 404 });
+    const out = await core.handle({ method, path: u.pathname, body: body || '', headers: new Headers(headers), teamId, action, hub: 'https://hub.test' });
+    return new Response(JSON.stringify(out.body), { status: out.status });
+  };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mo-rename-'));
+  try {
+    const client = createTeamClient({ dataDir: dir, fetch });
+    await client.create({ hub: 'https://hub.test', team: 'T', name: 'An' });
+    assert.equal((await client.rename(' An  Lê ')).me.name, 'An Lê');
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'team.json'), 'utf8')).name, 'An Lê');
+    await assert.rejects(client.rename('  '), { code: 'bad-name' });
+    old = true;
+    await assert.rejects(client.rename('Ann'), { code: 'hub-old' });
+    assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'team.json'), 'utf8')).name, 'An Lê');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
 test('relay: the members list and your role follow what the hub sends', async () => {
   process.env.OFFICE_TEAM_KEYSTORE = 'file';
   const { createRelay } = await import('../../server/team/relay.mjs');

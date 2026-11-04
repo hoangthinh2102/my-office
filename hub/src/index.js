@@ -18,9 +18,9 @@ import { invitePage } from './invite-page.js';
 
 export { Team } from './team.js';
 
-const VERSION = '0.4.1';
+const VERSION = '0.5.0';
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
-const ACTIONS = new Set(['invites', 'join', 'me', 'leave', 'policy', 'ws', 'knock', 'answer', 'revoke', 'code', 'redeem', 'access', 'promote', 'stepdown', 'remove']);
+const ACTIONS = new Set(['invites', 'join', 'me', 'leave', 'policy', 'ws', 'knock', 'answer', 'revoke', 'code', 'redeem', 'access', 'promote', 'stepdown', 'remove', 'rename']);
 
 const hub = {
   async fetch(request, env) {
