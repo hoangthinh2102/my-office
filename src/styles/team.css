@@ -102,6 +102,19 @@
 /* someone in another room: a card, view only */
 .tw-card { position: absolute; z-index: 5; width: 280px; background: rgba(19, 25, 34, .97); color: #EEF1F7; border: 1px solid rgba(255, 255, 255, .12); border-radius: 14px; box-shadow: 0 14px 36px rgba(0, 0, 0, .45); overflow: hidden; }
 .tw-card[hidden] { display: none; }
+/* the lift's card: a button per floor, then the building and your own floor (ui/team-lift.js openLiftCard) */
+.tw-pick-ic { display: grid; place-items: center; background: var(--accent); }
+.tw-pick-ic svg.ic { width: 16px; height: 16px; color: #fff; }
+.tw-pick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.tw-pick-ends { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+.tw-pick-b { all: unset; position: relative; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; border-radius: 10px; cursor: pointer;
+  background: rgba(255, 255, 255, .06); color: #E3E8EF; font: 700 .84rem/1 var(--font); }
+.tw-pick-b svg.ic { width: 15px; height: 15px; }
+.tw-pick-b:hover:not(:disabled) { background: rgba(255, 255, 255, .13); color: #fff; }
+.tw-pick-b.is-sel { background: var(--accent); color: #fff; cursor: default; }
+.tw-pick-b:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tw-pick-b .tw-lift-dot { right: 5px; top: 5px; }
+.is-phone .tw-pick-b { height: 40px; }
 .tw-card-h { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; align-items: center; gap: 9px; padding: 10px 8px 8px 12px; border-bottom: 1px solid rgba(255, 255, 255, .08); }
 .tw-card-h .team-room-names small { color: #9AA3B0; }
 .tw-card-x { width: 30px; height: 30px; }

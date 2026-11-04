@@ -85,6 +85,7 @@ export default {
     hint: 'Thang máy bên phải văn phòng đi lên từng tầng.',
     notHq: 'Toà nhà 3D có ở kiểu văn phòng Tập đoàn (Cài đặt → Văn phòng).',
     emptyFloor: 'Còn trống: mời đồng đội vào (Toà nhà → Mời người vào team)',
+    here: 'Bạn đang ở tầng {n} · chọn nơi muốn tới',
     free: 'Còn trống',
   },
   // a team floor's furniture (world/tower-floor.js): what pointing at it says; a click plays on your screen only
@@ -95,6 +96,7 @@ export default {
     props: {
       desk: { name: 'Bàn {n}', busy: '{who} · {what} · bấm để xem', empty: 'Bàn trống', closed: 'Phòng đóng: không xem được ai ngồi đâu', hint: '' },
       plant: { name: 'Chậu cây', hint: 'Lay nhẹ cho lá rung' },
+      lift: { name: 'Thang máy', hint: 'Bấm để chọn tầng' },
       board: { name: 'Bảng sprint', hint: 'Bảng trang trí: việc thật của phòng xem ở thẻ phòng' },
       cabinet: { name: 'Tủ thấp', hint: 'Bấm cho nó nảy nhẹ' },
       sofa: { name: 'Sofa', hint: 'Góc nghỉ: ai đang nghỉ sẽ ra đây ngồi' },
