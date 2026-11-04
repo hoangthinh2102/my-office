@@ -6,6 +6,7 @@ export default async function SessionRail() {
   const t = await getT();
   return (
     <aside className="side side-left" aria-label={t('ui.sessionRail.title')}>
+      <button type="button" className="side-fold" id="fold-left" aria-expanded="true" aria-label={t('ui.sessionRail.fold')} title={t('ui.sessionRail.fold')}><span data-icon="chevron"></span></button>
       <div className="lp-head">
         <div className="lp-title"><h2>{t('ui.sessionRail.title')}</h2><p className="conn" id="conn" data-state="off"><i></i><span>{t('ui.sessionRail.connecting')}</span></p></div>
         <p className="lp-sub" id="active-count">{t('ui.sessionRail.loading')}</p>
@@ -18,6 +19,7 @@ export default async function SessionRail() {
         <label className="search"><span data-icon="search"></span><input id="sess-search" type="search" placeholder={t('ui.sessionRail.search')} autoComplete="off" aria-label={t('ui.sessionRail.searchLabel')} /></label>
       </div>
       <ul className="sess-list" id="rail-list"></ul>
+      <div className="team-side" id="team-rail" hidden></div>
     </aside>
   );
 }

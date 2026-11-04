@@ -3,6 +3,30 @@
 .side { background: var(--side); display: flex; flex-direction: column; min-height: 0; z-index: 2; }
 .side-left { grid-area: left; border-right: 1px solid var(--line); }
 .side-right { grid-area: right; border-left: 1px solid var(--line); }
+/* folding a column away (ui/side-fold.js): an arrow on its inner edge; folded, it is a narrow strip with the arrow back
+   and its name down it. Wide screens only: narrower ones already have drawers. */
+.side-fold { display: none; }
+@media (min-width: 721px) {
+  .side-left, .side-right { position: relative; }
+  .side-fold { position: absolute; top: 15px; z-index: 3; width: 28px; height: 28px; padding: 0; display: grid; place-items: center; border-radius: 8px; border: 1px solid var(--line-2); background: var(--card); color: var(--muted); cursor: pointer; }
+  .side-fold:hover { color: var(--ink); border-color: var(--accent); }
+  .side-fold svg { transition: transform .15s; }
+  .side-left > .side-fold { right: 12px; }
+  .side-left > .side-fold svg { transform: rotate(180deg); }
+  .side-right > .side-fold { left: 12px; }
+  .side-left .lp-title { padding-right: 38px; }
+  .side-right .act-head { padding-left: 50px; }
+  :root:not(.is-phone) #app.fold-left { --lw: 44px; }
+  :root:not(.is-phone) #app.fold-right { --rw: 44px; }
+  :root:not(.is-phone) .fold-left .side-left > :not(.side-fold), :root:not(.is-phone) .fold-right .side-right > :not(.side-fold) { display: none !important; }
+  .fold-left .side-left > .side-fold { right: 7px; }
+  .fold-left .side-left > .side-fold svg { transform: none; }
+  .fold-right .side-right > .side-fold { left: 7px; }
+  .fold-right .side-right > .side-fold svg { transform: rotate(180deg); }
+  :root:not(.is-phone) .fold-left .side-left::after, :root:not(.is-phone) .fold-right .side-right::after { content: attr(aria-label); writing-mode: vertical-rl; margin: 56px auto 0; color: var(--muted); font-weight: 600; font-size: .8rem; letter-spacing: .02em; white-space: nowrap; }
+}
+@media (max-width: 1100px) { .side-left > .side-fold { display: none; } }
+.is-phone .side-fold { display: none !important; }
 .conn { display: inline-flex; align-items: center; gap: 6px; }
 .conn i { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
 .conn[data-state="off"] { color: var(--red); }

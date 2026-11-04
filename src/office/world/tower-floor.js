@@ -53,14 +53,25 @@ export function roomPlan(i) {
   return (PLANS[i] = { d, back, pl, pr, aisleL, aisleW, corner, seats, table, cabinet, board, corners, wall });
 }
 
-/** The way from chair (cx, cz) of a desk in room i to break seat s: [[x, z], …], the chair first and the seat last. */
+/** The way from chair (cx, cz) of a desk in room i to spot s (a break seat, or spotOf's): [[x, z], …], the chair first
+ *  and the spot last. A spot is reached from the aisle on its side of the room (the break corner's, unless it says). */
 export function pathTo(i, chair, s) {
-  const P = roomPlan(i), lounge = P.back ? -1 : 1, side = Math.sign(chair.cz - P.d.cz) || 1;
+  const P = roomPlan(i), want = s.side ?? (P.back ? -1 : 1), side = Math.sign(chair.cz - P.d.cz) || 1;
+  const aisle = (k) => (k < 0 ? P.d.z0 + 2.15 : P.d.z1 - 2.15);
   const pts = [[chair.cx, chair.cz]];
-  if (side === lounge) pts.push([chair.cx, P.aisleL]);
-  else pts.push([chair.cx, P.aisleW], [P.d.cx, P.aisleW], [P.d.cx, P.aisleL]);
+  if (side === want) pts.push([chair.cx, aisle(want)]);
+  else pts.push([chair.cx, aisle(side)], [P.d.cx, aisle(side)], [P.d.cx, aisle(want)]);
   pts.push(...s.via, [s.x, s.z]);
   return pts;
+}
+/** Where someone at work goes in room i, besides their desk and the break corner: 'board' (planning, handing work to a
+ *  subagent: in front of the sprint board) or 'cabinet' (reading, searching: at the cabinet). slot spreads a few people
+ *  out side by side. { x, z, ry (facing it), side, via }. */
+export function spotOf(i, key, slot = 0) {
+  const P = roomPlan(i), d = P.d, o = ((slot % 3) - 1) * 0.42;
+  const at = key === 'board' ? P.board : P.cabinet, toZ = at.z < d.cz ? 1 : -1;   // (it stands by one wall; you stand off it, facing it)
+  const x = at.x + o, z = at.z + toZ * (key === 'board' && !P.board.stand ? 0.62 : 0.6), side = toZ > 0 ? -1 : 1;
+  return { x, z, ry: toZ > 0 ? Math.PI : 0, side, via: [[x, side < 0 ? d.z0 + 2.15 : d.z1 - 2.15]] };
 }
 
 /* ---------- small pieces of its own ---------- */

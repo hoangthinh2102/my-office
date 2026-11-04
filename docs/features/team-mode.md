@@ -114,6 +114,7 @@ Chỉ nhận từ chính máy này: loopback, không qua tunnel, cùng origin, `
 
 Chỉ ở kiểu văn phòng **Tập đoàn** (`hq`); các kiểu khác chỉ có panel. Code: `src/office/world/team-tower.js` (dựng và vẽ),
 `src/office/ui/team-lift.js` (thang máy, thẻ chỉ xem), markup `#tw-lift` / `#tw-card` trong `Stage.tsx`.
+(Hai cột bên thu gọn được bằng mũi tên ở mép trong, `src/office/ui/side-fold.js`; không riêng gì team mode.)
 
 - **Ba cách xem** (thang máy bên phải sân khấu):
   - *Tầng của bạn*: văn phòng như cũ, toà nhà không được dựng vào cảnh vẽ (không tốn gì).
@@ -131,6 +132,11 @@ Chỉ ở kiểu văn phòng **Tập đoàn** (`hq`); các kiểu khác chỉ c�
   quá 8 người thì nhãn phòng ghi `+n`.
 - **Bấm vào một người** ở phòng khác: thẻ chỉ xem (chức danh · project, đang làm gì, số subagent, "Chỉ xem"). Bấm vào
   phòng đóng: chỉ tên chủ phòng và số người. Không có nút giao việc, duyệt hay nhắn.
+- **Hai cột bên theo phòng đang xem** (`src/office/ui/team-side.js`, markup `#team-rail` / `#team-feed`): bấm vào một
+  phòng hay một người ở tầng đang xem thì cột trái thành "Phòng của …" (đếm làm / chờ / nghỉ, từng phiên: project, vai
+  trò, đang làm gì, số subagent) và cột phải thành "Hoạt động · …" (các sự kiện gần nhất của phòng, mới nhất trên cùng).
+  Chỉ những gì hub đã gửi: nhãn việc chỉ có khi team bật chi tiết; phòng đóng chỉ có số người và nút gõ cửa. Nút
+  "Của bạn" ở đầu mỗi cột, đổi tầng hay về tầng của bạn thì hai cột trở lại như cũ. Không cần sửa hub.
 - **Tầng đang xem có đồ đầy đủ** (`src/office/world/tower-floor.js`), như cánh phòng ban của bạn: bàn thật (laptop,
   màn hình phụ, tủ, ghế xoay, đèn bàn, đồ lặt vặt), màn hình hiện đúng việc người ngồi đó đang làm (code, terminal,
   web, chờ duyệt, màn hình chờ khi nghỉ), biển tên ở cửa phòng (tên người, trạng thái phòng), bảng sprint, cây,
@@ -164,6 +170,10 @@ Chỉ ở kiểu văn phòng **Tập đoàn** (`hq`); các kiểu khác chỉ c�
   nhiều cây, sàn gỗ sáng), *Thư viện* (ghế bành, đèn đọc sách, kệ sách thấp, bể cá ở hành lang, sàn gỗ tối).
 - **Góc nghỉ** mỗi phòng 2 chỗ (`BREAK_SEATS`): người đang nghỉ (phòng xem được) đứng dậy đi ra ngồi đó với cốc cà
   phê, làm lại thì đi về bàn. Ai đã có chỗ thì giữ chỗ (`seatPeople`); mở tầng khi họ đang nghỉ thì thấy họ ở góc nghỉ luôn.
+- **Đi lại theo việc** (`goOf`, `walk` trong `team-tower.js`; `spotOf`, `pathTo` trong `tower-floor.js`), phòng xem
+  được, tầng đang xem: lên kế hoạch / giao việc cho subagent thì ra đứng chỉ bảng sprint; đọc file / tìm trong code thì
+  ra tủ đọc; chờ duyệt thì đứng dậy cạnh ghế giơ tay; việc khác thì ngồi gõ ở bàn. Đi qua lối giữa hai dãy bàn; ở bảng
+  hay tủ ít nhất 6 giây rồi mới về (việc đổi vài giây một lần); vài người cùng chỗ thì đứng lệch nhau.
 - **Bấm được, chỉ trên màn hình của bạn**: trỏ vào đồ thì có viền sáng và tên (như tầng của bạn); bấm thì cây rung,
   đèn bật / tắt, máy cà phê bốc hơi, cá bơi nhanh khi cho ăn, sofa / bảng / tủ nảy nhẹ. Không gửi gì lên hub, không
   đổi gì ở phòng người khác. **Bàn làm việc**: trỏ vào thì biết ai ngồi đó và đang làm gì (phòng đóng: không nói);

@@ -68,6 +68,7 @@ export default {
     nightTitle: 'Night / day',
   },
   activityPanel: {
+    fold: 'Fold the Activity column', unfold: 'Open the Activity column',
     title: 'Activity',
     live: 'live',
     today: 'Today',
@@ -150,6 +151,7 @@ export default {
     activity: 'Activity',
   },
   sessionRail: {
+    fold: 'Fold the Sessions column', unfold: 'Open the Sessions column',
     title: 'Sessions',
     connecting: 'connecting',
     loading: 'loading…',

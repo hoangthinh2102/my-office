@@ -17,7 +17,7 @@ import { applyChibiPose, chibiPose, makeChibi } from '../people/chibi-rig.js';
 import { PALETTE, hash } from '../people/workers.js';
 import { fitText } from '../scene/blocks.js';
 import { gridTex, plankTex, speckTex } from './pro/pieces.js';
-import { furnishFloor, pathTo, roomPlan } from './tower-floor.js';
+import { furnishFloor, pathTo, roomPlan, spotOf } from './tower-floor.js';
 import { BREAK_SEATS, FLOOR_H, TOWER_Y0, floorY, floorsOf, padFloors, seatPeople, seesIn, silhouettes, stateOf, themeOf } from '../../shared/team-floors.js';
 import { sfx } from '../audio/sfx.js';
 import { PROPS, hoverProp, propMeshes, setHoverProp } from '../interact/props.js';
@@ -482,6 +482,17 @@ function clearChars() {
   chars.clear();
 }
 const ANIM = { work: 'type', wait: 'hand', rest: 'coffee' };
+// where someone in an open room goes for what they are doing (on the floor you are on): the break corner when resting
+// (b0, b1: its seats), the sprint board when planning or handing work out, the cabinet when reading or searching;
+// waiting for an answer, they stand up by their desk with a hand up ('stand'); anything else, at their desk
+const BOARD = new Set(['plan', 'agent', 'substart']), CABINET = new Set(['read', 'grep', 'glob']);
+function goOf(p, brk) {
+  if (p.status === 'rest') return brk !== undefined ? `b${brk}` : undefined;
+  if (p.status === 'wait') return 'stand';
+  return BOARD.has(p.act) ? 'board' : CABINET.has(p.act) ? 'cabinet' : undefined;
+}
+const isBreak = (key) => /^b\d$/.test(key || '');   // (b0, b1: a break seat; not 'board')
+const spotAt = (c, key) => (isBreak(key) ? roomPlan(c.i).seats[+key.slice(1)] : spotOf(c.i, key, c.seat));
 // the people of the floor you are on, as characters (view only: nothing about them is a session of yours)
 function syncChars() {
   const want = new Map(), F = view.mode === 'floor' ? floors[view.floor - 1] : null;
@@ -489,7 +500,10 @@ function syncChars() {
     const r = R.room; if (!r || !seesIn(stateOf(r))) continue;
     const seats = seatsOf.get(r.member.id) || new Map();
     const brk = breakOf.get(r.member.id) || new Map();
-    for (const p of r.people || []) { const k = seats.get(p.id); if (k !== undefined) want.set(`${r.member.id}/${p.id}`, { R, r, p, k, b: detail?.F === F && p.status === 'rest' ? brk.get(p.id) : undefined }); }
+    for (const p of r.people || []) {
+      const k = seats.get(p.id); if (k === undefined) continue;
+      want.set(`${r.member.id}/${p.id}`, { R, r, p, k, go: detail?.F === F ? goOf(p, brk.get(p.id)) : undefined });
+    }
   }
   for (const [key, c] of chars) if (!want.has(key) || want.get(key).k !== c.seat || c.floor !== view.floor) { c.root.removeFromParent(); dispose(c.root); chars.delete(key); }
   for (const [key, w] of want) {
@@ -498,13 +512,13 @@ function syncChars() {
       const h = hash(key), { root, P } = makeChibi({ name: key, shirt: shirtOf(w.r.member.id, w.p.id), hair: HAIRS[h % HAIRS.length], pants: PANTS[(h >> 3) % PANTS.length], look: state.LOOK }, 1);
       root.traverse((o) => { o.castShadow = false; o.receiveShadow = false; o.userData.tw = { kind: 'person', floor: view.floor, i: w.R.i, member: w.r.member.id, person: w.p.id }; });
       // at their desk, or already in the break corner when you arrive while they rest
-      const dk = DESKS[w.R.i][w.k], s = w.b !== undefined ? roomPlan(w.R.i).seats[w.b] : null;
+      const dk = DESKS[w.R.i][w.k], s = isBreak(w.go) ? roomPlan(w.R.i).seats[+w.go.slice(1)] : null;
       root.position.set(s ? s.x : dk.cx, 0, s ? s.z : dk.cz); root.rotation.y = s ? s.ry : dk.ry;
       F.g.add(root);
-      c = { root, P, seat: w.k, i: w.R.i, floor: view.floor, seed: (h % 1000) / 100, anim: 'type', st: s ? 'break' : 'desk', brk: w.b, leaveAt: 0 };
+      c = { root, P, seat: w.k, i: w.R.i, floor: view.floor, seed: (h % 1000) / 100, anim: 'type', st: s ? 'away' : 'desk', spot: s ? w.go : null, arrived: -1e9, leaveAt: 0, stand: 0 };
       chars.set(key, c);
     }
-    c.anim = ANIM[w.p.status] || 'type'; c.want = w.b;
+    c.anim = ANIM[w.p.status] || 'type'; c.want = w.go;
   }
   // the simple figures stand in for whoever has a character now
   for (const G of floors) { G.bodies.visible = G.heads.visible = !(F && G === F); }
@@ -589,17 +603,18 @@ export function pickTower(ray) {
 /* ---------- every frame ---------- */
 const WALK = 1.15;   // m/s
 const SIT_UP = { studio: 0.08, garden: -0.04, library: 0.06 };   // a sofa seat is higher than an office chair, a bean bag lower
-// someone resting walks to the break corner after a moment, and back to the desk when they start again
+// someone walks to where their work is (goOf) after a moment, and back to their desk when it changes: from the board or
+// the cabinet not before a few seconds there (the work changes every few seconds), from the break corner at once
 function walk(c, dt, t) {
-  const dk = DESKS[c.i][c.seat], seats = roomPlan(c.i).seats;
+  const dk = DESKS[c.i][c.seat], go = c.want && c.want !== 'stand' && detail ? c.want : undefined;
   if (c.st === 'desk') {
-    if (c.want === undefined || !detail) { c.leaveAt = 0; return; }
-    if (!c.leaveAt) { c.leaveAt = t + 1.5 + (c.seed % 6); return; }
+    if (!go) { c.leaveAt = 0; return; }
+    if (!c.leaveAt) { c.leaveAt = t + (isBreak(go) ? 1.5 + (c.seed % 6) : 0.8 + (c.seed % 1.5)); return; }
     if (t < c.leaveAt) return;
-    c.brk = c.want; c.path = pathTo(c.i, dk, seats[c.brk]); c.seg = 0; c.st = 'out'; c.leaveAt = 0;
-  } else if (c.st === 'break') {
-    if (c.want === c.brk) return;
-    c.path = pathTo(c.i, dk, seats[c.brk]).reverse(); c.seg = 0; c.st = 'back';
+    c.spot = go; c.path = pathTo(c.i, dk, spotAt(c, go)); c.seg = 0; c.st = 'out'; c.leaveAt = 0;
+  } else if (c.st === 'away') {
+    if (go === c.spot || t - c.arrived < (isBreak(c.spot) ? 0 : 6)) return;
+    c.path = pathTo(c.i, dk, spotAt(c, c.spot)).reverse(); c.seg = 0; c.st = 'back';
   }
   let left = dt * WALK;
   while (left > 0 && c.seg < c.path.length - 1) {
@@ -608,7 +623,7 @@ function walk(c, dt, t) {
     if (dist <= left) { c.root.position.x = bx; c.root.position.z = bz; c.seg++; left -= dist; } else { c.root.position.x += (dx / dist) * left; c.root.position.z += (dz / dist) * left; left = 0; }
   }
   if (c.seg >= c.path.length - 1) {
-    if (c.st === 'out') { c.st = 'break'; c.root.rotation.y = seats[c.brk].ry; } else { c.st = 'desk'; c.root.rotation.y = dk.ry; }
+    if (c.st === 'out') { c.st = 'away'; c.arrived = t; c.root.rotation.y = spotAt(c, c.spot).ry; } else { c.st = 'desk'; c.root.rotation.y = dk.ry; }
   }
 }
 /* The lift, as the lobby's (world/entrance.js): the car goes where you look (a floor; else it waits on the ground).
@@ -641,9 +656,17 @@ export function updateTower(dt, t) {
   if (state.selectedId || state.photo) { goTower('mine'); return; }
   for (const c of chars.values()) {
     walk(c, dt, t);
-    const moving = c.st === 'out' || c.st === 'back', anim = moving ? 'walk' : c.st === 'break' ? 'coffee' : c.anim;
-    const pose = chibiPose(c.P, anim, t + c.seed, { sit: !moving, blink: ((t + c.seed) % 4.2) < 0.12 });
-    c.root.position.y = applyChibiPose(c.P, pose, dt) + (c.st === 'break' ? SIT_UP[detail?.F.theme] || 0 : 0);
+    const moving = c.st === 'out' || c.st === 'back', at = c.st === 'away' ? c.spot : null, brk = isBreak(at);
+    const anim = moving ? 'walk' : brk ? 'coffee' : at === 'board' ? 'board' : at === 'cabinet' ? 'read' : c.anim;
+    // waiting at the desk: up from the chair, a step back from it
+    if (c.st === 'desk') {
+      c.stand = THREE.MathUtils.clamp(c.stand + (c.want === 'stand' ? dt : -dt) * 3, 0, 1);
+      const dk = DESKS[c.i][c.seat], k = c.stand * 0.3;
+      c.root.position.x = dk.cx - Math.sin(dk.ry) * k; c.root.position.z = dk.cz - Math.cos(dk.ry) * k;
+    }
+    const sit = !moving && (at ? brk : c.stand < 0.5);
+    const pose = chibiPose(c.P, anim, t + c.seed, { sit, blink: ((t + c.seed) % 4.2) < 0.12 });
+    c.root.position.y = applyChibiPose(c.P, pose, dt) + (brk ? SIT_UP[detail?.F.theme] || 0 : 0);
   }
   if (detail) detail.D.update(dt, t);
   // lights: warm in every room someone is in, brighter after dark
@@ -672,9 +695,12 @@ export function setup() {
       get detail() {
         if (!detail) return null;
         const r = document.getElementById('stage').getBoundingClientRect(), at = (p) => { const v = new THREE.Vector3(); p.box.getCenter(v); v.project(camera); return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height }; };
-        return { floor: detail.F.n, theme: detail.F.theme, props: detail.D.props.map((p) => ({ id: p.id, kind: p.kind, ...at(p) })), chars: [...chars.values()].map((c) => c.st), meshes: drawn(detail.D.g) };
+        return { floor: detail.F.n, theme: detail.F.theme, props: detail.D.props.map((p) => ({ id: p.id, kind: p.kind, ...at(p) })), chars: [...chars.values()].map((c) => c.st), where: [...chars.values()].map((c) => (c.st === 'away' ? c.spot : c.stand > 0.5 ? 'stand' : c.st)), meshes: drawn(detail.D.g) };
       },
       prop(id) { detail?.D.props.find((p) => p.id === id)?.act(); },
+      // someone on the floor you are on starts on something else ({ status, act }), until the relay says otherwise
+      patch(i, k, fields) { const p = floors[view.floor - 1]?.rooms[i]?.room?.people?.[k]; if (!p) return false; Object.assign(p, fields); syncChars(); return true; },
+      point(x, y, z) { const v = new THREE.Vector3(x, y, z).project(camera), r = document.getElementById('stage').getBoundingClientRect(); return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height }; },
       // the lift: where the car is, how open each landing's doors are (the ground's, then floor 1 up), which one is held
       get lift() { return { cabY: Math.round(cabY * 100) / 100, ground: ground ? Math.round(ground.open * 100) / 100 : null, doors: floors.map((F) => Math.round(F.lift.open * 100) / 100), held: liftHeld, text: liftShown }; },
       groundPoint() {

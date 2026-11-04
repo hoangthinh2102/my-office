@@ -17,6 +17,7 @@ import { drS } from './session-drawer.js';
 import { queueUi } from './activity.js';
 import { sfx } from '../audio/sfx.js';
 import { fp, rideOut, setSolid } from '../interact/first-person.js';
+import { refreshTeamSide, showTeamSide } from './team-side.js';
 import { t as tr } from '../../i18n/index.js';
 
 let lift, card, hint, shown = false, restored = false, cardAt = 0;
@@ -31,6 +32,7 @@ export function syncLift(t) {
   const n = towerFloors();
   shown = !!t?.inTeam && n > 0;
   lift.hidden = !shown;
+  refreshTeamSide();
   if (!shown) { closeCard(); closeHint(); return; }
   // the first time there are floors on this page: back to what you last looked at (the whole building, a floor)
   if (!restored) {
@@ -76,6 +78,7 @@ export function towerClick(ray, ev) {
   const r = towerRoom(hit.floor, hit.i);
   if (!r) { closeCard(); return true; }
   openCard(hit, r, ev);
+  showTeamSide(hit.floor, hit.i);   // (the side columns: that room's sessions and activity)
   return true;
 }
 /** Hover: is the pointer over something in the building? A thing to click gets its outline and name, as on your floor. */
@@ -173,7 +176,7 @@ export function setup() {
   addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCard(); });
   // while you look at the building, your own office's labels (names, bubbles, place chips) stay out of the way
   onViewHooks.push((v) => {
-    closeCard(); setHoverProp(null); $('stage-wrap')?.classList.toggle('is-tower', v.mode !== 'mine');
+    closeCard(); setHoverProp(null); refreshTeamSide(); $('stage-wrap')?.classList.toggle('is-tower', v.mode !== 'mine');
     if (restored && towerFloors()) save(VIEW_KEY, v.mode === 'floor' ? String(v.floor) : v.mode);   // (remembered for the next visit; not when the floors are gone for a while, offline)
     if (shown) render();
   });

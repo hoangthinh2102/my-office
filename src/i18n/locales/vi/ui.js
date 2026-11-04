@@ -68,6 +68,7 @@ export default {
     nightTitle: 'Ban đêm / ban ngày',
   },
   activityPanel: {
+    fold: 'Thu gọn cột Hoạt động', unfold: 'Mở cột Hoạt động',
     title: 'Hoạt động',
     live: 'trực tiếp',
     today: 'Hôm nay',
@@ -150,6 +151,7 @@ export default {
     activity: 'Hoạt động',
   },
   sessionRail: {
+    fold: 'Thu gọn cột Phiên làm việc', unfold: 'Mở cột Phiên làm việc',
     title: 'Phiên làm việc',
     connecting: 'đang kết nối',
     loading: 'đang tải…',
