@@ -44,9 +44,12 @@ if [ -z "$DIR" ]; then
   DIR="${DIR:-$HOME/my-office}"
 fi
 
+PREV="" DIRTY=""   # an install already here: the commit it was on (for `update --from` below), and changes of its own
 if is_ours "$DIR"; then
   say "$(t "Đã có My Office ở $DIR: lấy bản mới" "My Office is already in $DIR: getting the latest")"
+  PREV="$(git -C "$DIR" rev-parse HEAD)"
   if [ -n "$(git -C "$DIR" status --porcelain --untracked-files=no)" ]; then
+    DIRTY=1
     printf '  ! %s\n' "$(t 'Có thay đổi riêng trong thư mục này: giữ nguyên, không cập nhật.' 'There are local changes in this folder: left as they are, not updated.')"
   else
     git -C "$DIR" pull --ff-only --quiet || fail "$(t 'Không lấy được bản mới (git pull). Kiểm tra mạng rồi thử lại.' "Couldn't get the latest (git pull). Check your connection and try again.")"
@@ -59,12 +62,22 @@ else
 fi
 
 cd "$DIR"
-step "$(t 'Cài các gói (khoảng 1 phút)…' 'Installing packages (about a minute)…')"
-npm ci --no-audit --no-fund --loglevel=error
-say "$(t 'Đã cài các gói' 'Packages installed')"
-
-# a fresh build for the code just pulled (setup builds only when there is none)
-if [ -f .next/BUILD_ID ] && [ "$(cat .next/office-commit 2>/dev/null)" != "$(git rev-parse HEAD)" ]; then rm -rf .next; fi
+if [ -n "$PREV" ] && [ -d node_modules ] && [ -f .next/BUILD_ID ]; then
+  # an install that runs: the new version is built the way `my-office update` does (packages only if they changed,
+  # the build, its own service restarted), and a build that fails goes back to $PREV, so the office keeps running.
+  # (Reinstalling the packages or removing the build under a running office took it down.) A clone with changes of
+  # its own wasn't pulled (above) and is left as it is.
+  if [ -z "$DIRTY" ] && { [ "$PREV" != "$(git rev-parse HEAD)" ] || [ "$(cat .next/office-commit 2>/dev/null)" != "$PREV" ]; }; then
+    step "$(t 'Cập nhật văn phòng đang chạy (khoảng 2–3 phút)…' 'Updating the running office (2–3 minutes)…')"
+    node bin/cli.mjs update --from "$PREV" || fail "$(t "Bản mới chưa cài được: văn phòng vẫn chạy bản cũ. Xem lỗi ở trên, hoặc chạy lại: cd $DIR && node bin/cli.mjs update" "The new version didn't install: the office still runs the old one. See the error above, or run again: cd $DIR && node bin/cli.mjs update")"
+  fi
+else
+  step "$(t 'Cài các gói (khoảng 1 phút)…' 'Installing packages (about a minute)…')"
+  npm ci --no-audit --no-fund --loglevel=error
+  say "$(t 'Đã cài các gói' 'Packages installed')"
+  # a fresh build for the code just pulled (setup builds only when there is none)
+  if [ -f .next/BUILD_ID ] && [ "$(cat .next/office-commit 2>/dev/null)" != "$(git rev-parse HEAD)" ]; then rm -rf .next; fi
+fi
 
 echo
 exec node bin/cli.mjs setup "$@"

@@ -11,7 +11,8 @@ const WORDS = {
     computer: 'Làm trên máy tính bạn dùng Claude Code (không phải điện thoại).',
     haveT: 'Đã cài My Office trên máy này', haveB: 'Văn phòng mở ra với link điền sẵn: gõ tên của bạn rồi bấm Vào team.',
     open: 'Mở My Office để vào team',
-    newT: 'Chưa có My Office', newB: 'Mở Terminal, dán dòng dưới rồi Enter. Lệnh tự cài, chạy văn phòng nền, vào team và mở trang (khoảng 2–3 phút).',
+    old: 'Cài từ trước tháng 11/2026, hoặc vào rồi mà toà nhà trống? Văn phòng của bạn cần cập nhật: dùng dòng lệnh ở phần dưới, nó cập nhật rồi vào team luôn.',
+    newT: 'Chưa có My Office, hoặc cần cập nhật', newB: 'Mở Terminal, dán dòng dưới rồi Enter. Lệnh tự cài, chạy văn phòng nền, vào team và mở trang (khoảng 2–3 phút).',
     needs: 'Cần: macOS hoặc Linux, Node.js 22 trở lên, Claude Code.',
     copy: 'Chép lệnh', copied: 'Đã chép',
     after: 'Xong thì mở một phiên Claude Code mới để nhân viên bắt đầu vào văn phòng.',
@@ -24,7 +25,8 @@ const WORDS = {
     computer: 'Do this on the computer you use Claude Code on (not a phone).',
     haveT: 'My Office is already on this computer', haveB: 'The office opens with the link filled in: type your name and press Join the team.',
     open: 'Open My Office to join',
-    newT: "My Office isn't installed yet", newB: 'Open Terminal, paste the line below and press Enter. It installs, runs the office in the background, joins the team and opens the page (2–3 minutes).',
+    old: 'Installed before November 2026, or joined and the building is empty? Your office needs updating: use the line below, it updates it and joins on the way.',
+    newT: "My Office isn't installed yet, or needs updating", newB: 'Open Terminal, paste the line below and press Enter. It installs, runs the office in the background, joins the team and opens the page (2–3 minutes).',
     needs: 'Needs: macOS or Linux, Node.js 22 or newer, Claude Code.',
     copy: 'Copy', copied: 'Copied',
     after: 'Then open a new Claude Code session so it starts reporting to the office.',
@@ -72,7 +74,8 @@ ${team ? `<p>${esc(w.expiredTeam)} “${esc(team)}” ${esc(w.gone)}</p>
 </main></body></html>` : `<h1>${esc(w.invited)} ${team ? `“${esc(team)}”` : esc(w.noName)}</h1>
 <p class="m">${esc(w.what)}</p>
 <p class="m">${esc(w.once)} ${esc(w.computer)}</p>
-<section><h2>${esc(w.haveT)}</h2><p class="m">${esc(w.haveB)}</p><a class="b" href="${esc(join)}">${esc(w.open)}</a></section>
+<section><h2>${esc(w.haveT)}</h2><p class="m">${esc(w.haveB)}</p><a class="b" href="${esc(join)}">${esc(w.open)}</a>
+<p class="m" style="margin:12px 0 0">${esc(w.old)}</p></section>
 <section><h2>${esc(w.newT)}</h2><p class="m">${esc(w.newB)}</p>
 <div class="c"><code id="cmd">${esc(cmd)}</code><button type="button" id="cp">${esc(w.copy)}</button></div>
 <p class="m" style="margin-top:10px">${esc(w.needs)} ${esc(w.after)}</p></section>
