@@ -7,10 +7,14 @@
 //
 // It runs only while this computer is in a team (data/team.json) and not paused; it re-reads that file when it changes
 // (my-office team room / pause / resume / leave), so those take effect without a restart.
+//
+// A session's conversation: when this room's owner lets it be read (team.json room.log), someone allowed to see the
+// room may ask for one session's recent conversation (readLog); it goes back to them alone, through the hub
+// (shared/team-protocol.js cleanLog). requestLog asks for one of someone else's.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { RELAY_BATCH_MS, RELAY_BEAT_MS, eventView, roomView, signedWsUrl } from '../../shared/team-protocol.js';
+import { LOG_MSG_MAX, LOG_WAIT_MS, RELAY_BATCH_MS, RELAY_BEAT_MS, cleanLog, eventView, roomView, signedWsUrl } from '../../shared/team-protocol.js';
 import { loadKeys } from './identity.mjs';
 
 const BACKOFF = [2_000, 5_000, 10_000, 30_000, 60_000];
@@ -21,11 +25,15 @@ const ANSWER_KEEP_MS = 10 * 60_000;   // how long the page shows "refused" / "en
  * dataDir: the office's data folder; sessions(): the server's public session views (pub());
  * redact: masks secrets in a label; log: one line to the server log; WebSocket: the client class (Node 22's global);
  * onChange(state): what the page shows changed (at most once a second), for the server to pass on to its pages.
+ * readLog(sessionId): that session's conversation (server/index.mjs readLog items), for a teammate who asks.
+ * build: this office's version (server/updater.mjs); onVersion(min, held): the oldest the team allows, and whether the
+ * hub holds this office back until it has updated.
  */
-export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => {}, onChange = () => {}, WebSocket = globalThis.WebSocket, now = () => Date.now() }) {
+export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => {}, onChange = () => {}, WebSocket = globalThis.WebSocket, now = () => Date.now(), readLog = async () => [], build = 0, onVersion = () => {} }) {
   const STATE = path.join(dataDir, 'team.json');
   const salt = crypto.randomBytes(16);   // (a session's id here becomes another, unguessable one on the hub, new each run)
   const idOf = (id) => crypto.createHmac('sha256', salt).update(String(id)).digest('hex').replace(/[^a-z0-9]/g, '').slice(0, 12);
+  let held = false;   // the hub holds this office back: older than the team allows (it updates itself, server/updater.mjs)
   let team = null, ws = null, retry = 0, retryTimer = null, batchTimer = null, beatTimer = null, stopped = true;
   let dirty = false, lastSent = '', events = [], policy = { details: false }, me = null, connected = false, why = '';
   const rooms = new Map();   // member id -> room as the hub sent it
@@ -44,7 +52,9 @@ export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => 
 
   const readTeam = () => { try { return JSON.parse(fs.readFileSync(STATE, 'utf8')); } catch { return null; } };
   const mode = () => (team?.room?.mode === 'open' ? 'open' : 'closed');
-  const view = () => roomView(sessions(), { mode: mode(), details: policy.details, idOf, redact, share: sharing() });
+  const logOn = () => team?.room?.log === true;
+  const view = () => roomView(sessions(), { mode: mode(), details: policy.details, idOf, redact, share: sharing(), log: logOn() });
+  const asked = new Map();   // request id -> { resolve, timer }: conversations asked for, not answered yet
   const eventsGo = () => mode() === 'open' || sharing();
   const send = (msg) => { if (ws && connected) { try { ws.send(JSON.stringify(msg)); } catch { /* closing */ } } };
 
@@ -73,7 +83,7 @@ export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => 
         if (why !== 'no-key') log('team: this computer has no team key right now (locked keychain?); trying again. If it stays: my-office team restore, or leave --local');
         why = 'no-key'; changed(); scheduleRetry(); return;
       }
-      const sock = new WebSocket(await signedWsUrl(keys, team.hub, team.teamId, now()));
+      const sock = new WebSocket(await signedWsUrl(keys, team.hub, team.teamId, now(), typeof build === 'function' ? build() : build));
       ws = sock;
       sock.addEventListener('open', () => {
         if (ws !== sock) return;
@@ -111,11 +121,16 @@ export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => 
     changed();
     if (msg.t === 'hello') {
       me = msg.me || null; policy = { details: !!msg.policy?.details };
+      held = !!msg.update; onVersion(Number(msg.version?.min) || 0, held);
       rooms.clear(); for (const r of msg.rooms || []) if (r?.member?.id) rooms.set(r.member.id, r);
       grants = listOf(msg.grants); knocks = listOf(msg.knocks); members = membersOf(msg.members);
       asks.clear(); for (const a of msg.asks || []) if (a?.room) asks.set(a.room, a.at);
       flush(true);
-    } else if (msg.t === 'room' && msg.room?.member?.id) rooms.set(msg.room.member.id, msg.room);
+    } else if (msg.t === 'room' && msg.room?.member?.id) {
+      // (a room's update carries no events: keep the ones already here while its people can still be seen)
+      const prev = rooms.get(msg.room.member.id);
+      rooms.set(msg.room.member.id, msg.room.people && prev?.events ? { ...msg.room, events: prev.events } : msg.room);
+    }
     else if (msg.t === 'gone' && msg.member) rooms.delete(msg.member);
     else if (msg.t === 'members') { members = membersOf(msg.list); if (msg.me?.id) me = msg.me; }   // (someone joined, left, was removed, became or stopped being an admin)
     else if (msg.t === 'policy') { policy = { details: !!msg.policy?.details }; dirty = true; }
@@ -130,6 +145,23 @@ export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => 
       const r = rooms.get(msg.member);
       r.events = [...(r.events || []), ...(msg.list || [])].slice(-EVENTS_KEEP);
     }
+    else if (msg.t === 'update') onVersion(Number(msg.min) || 0, held);   // (an admin raised the oldest version the team allows)
+    else if (msg.t === 'logreq') answerLog(msg);
+    else if (msg.t === 'log' && asked.has(msg.id)) {
+      const q = asked.get(msg.id); asked.delete(msg.id); clearTimeout(q.timer);
+      q.resolve(msg.error ? { ok: false, error: msg.error } : { ok: true, items: Array.isArray(msg.items) ? msg.items : [] });
+    }
+  }
+  // a teammate asks for one of this room's sessions' conversation: only while this room's owner allows it
+  async function answerLog(msg) {
+    const reply = (o) => send({ t: 'log', id: msg.id, p: msg.p, ...o });
+    if (!logOn()) { reply({ error: 'off' }); return; }
+    const s = (sessions() || []).find((x) => idOf(x.id) === msg.p);
+    if (!s) { reply({ error: 'gone' }); return; }
+    let items = cleanLog(await readLog(s.id).catch(() => []), redact);
+    while (items.length && JSON.stringify({ t: 'log', id: msg.id, p: msg.p, items }).length > LOG_MSG_MAX - 1024) items = items.slice(Math.ceil(items.length / 4));   // (too big: the oldest go)
+    if (!logOn()) { reply({ error: 'off' }); return; }   // (turned off while it was being read)
+    reply({ items });
   }
 
   // team.json changed (joined, left, room opened or closed, paused or resumed)
@@ -179,13 +211,24 @@ export function createRelay({ dataDir, sessions, redact = (x) => x, log = () => 
       if (m?.id) me = m;
       changed();
     },
+    /** One session's recent conversation in someone else's room (room: their member id, p: the session's id there):
+     *  { ok, items } or { ok: false, error: 'off' | 'gone' | 'busy' | 'denied' | 'timeout' | 'offline' }. */
+    requestLog(room, p) {
+      if (!connected) return Promise.resolve({ ok: false, error: 'offline' });
+      const id = crypto.randomBytes(12).toString('base64url');
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => { asked.delete(id); resolve({ ok: false, error: 'timeout' }); }, LOG_WAIT_MS); timer.unref?.();
+        asked.set(id, { resolve, timer });
+        send({ t: 'logreq', room: String(room || ''), p: String(p || ''), id });
+      });
+    },
     /** For GET /api/team and `my-office team rooms`. */
     state() {
       return {
         inTeam: !!team, team: team ? { id: team.teamId, name: team.teamName, hub: team.hub } : null,
         me: me || (team ? { id: team.memberId, name: team.name } : null),
-        room: team ? { mode: mode(), paused: !!team.paused } : null,
-        connected, problem: why || null, policy, rooms: [...rooms.values()], members,
+        room: team ? { mode: mode(), paused: !!team.paused, log: logOn() } : null,
+        connected, problem: held ? 'update' : why || null, policy, rooms: [...rooms.values()], members,
         grants: grants.filter((g) => g.until == null || g.until > now()), knocks,
         asks: [...asks].map(([room, at]) => ({ room, at })),
         answers: [...answers].filter(([, a]) => now() - a.at < ANSWER_KEEP_MS).map(([room, a]) => ({ room, ...a })),

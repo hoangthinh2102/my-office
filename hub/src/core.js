@@ -3,9 +3,11 @@
 // same code runs in the Worker (team.js) and in the unit tests (Node's built-in SQLite).
 //
 // The hub only relays: it never holds a member's code, prompts or conversations, and it has no way to send a command
-// to anyone's computer.
+// to anyone's computer. (A session's conversation, when its room's owner allows it to be read, goes through it to the
+// one viewer who asked, and is not kept. A room's last few events are kept in memory only, for whoever connects next.)
 import {
-  CODE_GRANT_MS, GRANTS, INVITE_TTL_MS, KNOCK_TTL_MS, MSG_MAX, NONCE_KEEP_MS, VIEW_CODE_TTL_MS, cleanEvents, cleanName, cleanRoom,
+  CODE_GRANT_MS, GRANTS, INVITE_TTL_MS, KNOCK_TTL_MS, LOG_ERRORS, LOG_MSG_MAX, LOG_REQ_MS, LOG_WAIT_MS, MSG_MAX, NONCE_KEEP_MS, VIEW_CODE_TTL_MS,
+  cleanEvents, cleanLog, cleanName, cleanRoom, isOpaqueId, isReqId,
   formatInvite, grantUntil, hashCode, hashViewCode, isInviteCode, keyId, makeInviteCode, normalizeCode, verifyRequest, wsHeaders,
 } from '../../shared/team-protocol.js';
 
@@ -42,6 +44,9 @@ const ACCESS_WINDOW = 10 * 60_000;
 const MAX_OPEN_VIEW_CODES = 5;    // per room, at one time
 const LOG_KEEP = 200;             // access log lines kept per room
 const LOG_OUT = 50;               // and shown to its owner
+const EVENTS_KEEP = 50;           // a room's last events, in memory, for whoever connects (hello)
+const LOG_SEEN_MS = 10 * 60_000;  // a viewer reading a room's conversations: one line in its access log this often
+const LOG_PENDING_MAX = 200;      // conversations asked for and not answered yet, at one time
 
 export class HubError extends Error {
   constructor(status, code) { super(code); this.status = status; this.code = code; }
@@ -50,9 +55,12 @@ const fail = (status, code) => { throw new HubError(status, code); };
 
 export class TeamCore {
   /** sql: { exec(query, ...bindings) -> { toArray() } }. */
-  constructor(sql, { now = () => Date.now(), online = () => true } = {}) {
+  constructor(sql, { now = () => Date.now(), online = () => true, buildOf = () => 0 } = {}) {
     this.sql = sql; this.now = now;
-    this.online = online;   // whether a member has a socket open now (the Durable Object knows; the tests say yes)
+    this.socketUp = online;   // whether a member has a socket open now (the Durable Object knows; the tests say yes)
+    this.buildOf = buildOf;   // the office version that member's socket said it runs (its ?b=), 0 when it didn't say
+    // online, for everyone else: connected, and not held back for running an office older than the team allows
+    this.online = (id) => this.socketUp(id) && !this.gated(id);
     // the tables are made only when a team is created, so a request for a team that doesn't exist writes nothing
     this.ready = this.rows("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'meta'").length > 0;
     if (this.ready) { for (const q of SCHEMA) this.sql.exec(q); this.firstAdmin(); }   // (a team made by an older version gets the tables added since)
@@ -81,6 +89,7 @@ export class TeamCore {
         case 'GET me': return await this.me(req);
         case 'POST leave': return await this.leave(req);
         case 'POST policy': return await this.policy(req);
+        case 'POST update': return await this.requireUpdate(req);
         case 'POST promote': return await this.promote(req);
         case 'POST stepdown': return await this.stepDown(req);
         case 'POST remove': return await this.remove(req);
@@ -258,6 +267,31 @@ export class TeamCore {
 
   /* ---------- the team's settings ----------
      details: whether open rooms may show file names and commands. Off by default; only admins change it. */
+  /* ---------- the oldest office the team allows (an admin raises it: `my-office team update`) ----------
+     An office older than that is held back: it gets no rooms and nobody gets its room, until it has updated itself
+     (it does on its own, from its own git remote: the hub only says which version, never sends code). */
+  minBuild() { if (this.minAt == null) this.minAt = Number(this.meta('min_build')) || 0; return this.minAt; }
+  gated(id) { const min = this.minBuild(); return min > 0 && (Number(this.buildOf(id)) || 0) < min; }
+  versionOut() { return { min: this.minBuild() }; }
+  async requireUpdate(req) {
+    const m = await this.member(req), b = this.body(req);
+    if (!this.isAdmin(m.id)) fail(403, 'not-owner');
+    const build = b.build;
+    if (!Number.isInteger(build) || build < 0 || build > 1e7) fail(400, 'bad-request');
+    const was = new Set(this.members().filter((x) => this.socketUp(x.id) && this.gated(x.id)).map((x) => x.id));
+    this.sql.exec('INSERT INTO meta (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v', 'min_build', String(build));
+    this.minAt = build;
+    this.log(m.id, 'update', `min=${build}`);
+    const send = this.members().map((x) => ({ to: x.id, msg: { t: 'update', min: build } }));
+    // (who is held back now drops out of everyone's building; who no longer is comes back)
+    for (const x of this.members()) {
+      if (!this.socketUp(x.id) || was.has(x.id) === this.gated(x.id)) continue;
+      send.push(...this.fanRoom(x, !this.gated(x.id)));
+      if (!this.gated(x.id)) send.push({ to: x.id, msg: this.hello(x.id, (id) => this.socketUp(id)) });
+    }
+    return { status: 200, body: { version: this.versionOut() }, send };
+  }
+
   policyOut() { return { details: this.meta('policy_details') === '1' }; }
   async policy(req) {
     const m = await this.member(req), b = this.body(req);
@@ -265,6 +299,7 @@ export class TeamCore {
     if (typeof b.details !== 'boolean') fail(400, 'bad-request');
     this.sql.exec('INSERT INTO meta (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v', 'policy_details', b.details ? '1' : '0');
     this.log(m.id, 'policy', `details=${b.details}`);
+    if (!b.details) this.evs?.clear();   // (the events kept carry labels the team no longer shares)
     return { status: 200, body: { policy: this.policyOut() }, policy: this.policyOut() };
   }
 
@@ -302,22 +337,31 @@ export class TeamCore {
   /** What a member gets when it connects: who it is, the team's settings, every other member's room as it may see it,
    *  who may watch its own room, who is knocking, and the knocks it is waiting on. */
   hello(viewerId, online) {
-    const me = this.members().find((m) => m.id === viewerId);
-    return { t: 'hello', team: this.teamOut(), me: me ? this.meOut(me.id) : null, policy: this.policyOut(), members: this.membersOut(),
-      rooms: this.members().filter((m) => m.id !== viewerId).map((m) => this.roomOut(m, online(m.id), viewerId)),
+    const me = this.members().find((m) => m.id === viewerId), up = (id) => online(id) && !this.gated(id);
+    const held = this.gated(viewerId);   // (an office older than the team allows: no rooms until it has updated)
+    return { t: 'hello', team: this.teamOut(), me: me ? this.meOut(me.id) : null, policy: this.policyOut(), members: this.membersOut(), version: this.versionOut(),
+      ...(held ? { update: this.versionOut() } : {}),
+      rooms: held ? [] : this.members().filter((m) => m.id !== viewerId).map((m) => this.withEvents(this.roomOut(m, up(m.id), viewerId))),
       grants: this.grantsOut(viewerId), knocks: this.knocksOut(viewerId), asks: this.asksOut(viewerId) };
+  }
+  // a room as hello sends it: with its last events, when the viewer sees who is in it (an open room, or one they are let into)
+  withEvents(room) {
+    const list = room.online && room.people ? this.evs?.get(room.member.id) : null;
+    return list?.length ? { ...room, events: list } : room;
   }
   /** A member came online or went offline: [{ to, msg }]. */
   presenceOut(memberId, online) {
     const m = this.members().find((x) => x.id === memberId);
-    return m ? this.fanRoom(m, online) : [];
+    return m ? this.fanRoom(m, online && !this.gated(memberId)) : [];
   }
   /** A message from a member's socket. Returns what to pass on to everyone else ([] for nothing). */
   ingest(memberId, text) {
-    if (typeof text !== 'string' || text.length > MSG_MAX) return [];
+    if (typeof text !== 'string' || text.length > LOG_MSG_MAX) return [];
     let msg; try { msg = JSON.parse(text); } catch { return []; }
+    if (msg?.t !== 'log' && text.length > MSG_MAX) return [];   // (only a conversation going back may be that big)
     const m = this.members().find((x) => x.id === memberId);
     if (!m || !msg || typeof msg !== 'object') return [];
+    if (this.gated(memberId)) return [];   // (held back until it has updated: nothing it sends goes on)
     const { details } = this.policyOut(), t = this.now();
     if (msg.t === 'room') {
       // a closed room's people are kept only while someone is let in, only in memory, and only for those people
@@ -333,6 +377,7 @@ export class TeamCore {
         entry.savedAt = t;
       }
       this.live.set(memberId, entry);
+      if (room.mode !== 'open' && !share) this.evs?.delete(memberId);   // (nobody may see its events now)
       return changed ? this.fanRoom(m, true) : [];
     }
     if (msg.t === 'ev') {
@@ -343,9 +388,45 @@ export class TeamCore {
       if (!open && !this.sharing(memberId)) return [];
       const list = cleanEvents(msg.list, { details });
       if (!list.length) return [];
+      this.evs ||= new Map();
+      this.evs.set(memberId, [...(this.evs.get(memberId) || []), ...list].slice(-EVENTS_KEEP));
       return this.viewers(memberId).filter((v) => open || this.grantOf(memberId, v.id)).map((v) => ({ to: v.id, msg: { t: 'ev', member: memberId, list } }));
     }
+    if (msg.t === 'logreq') return this.logAsk(m, msg);
+    if (msg.t === 'log') return this.logAnswer(m, msg);
     return [];
+  }
+
+  /* ---------- a session's conversation (its room's owner allows it: room.log) ----------
+     The viewer asks; the hub checks they may see the room and that it allows it, then asks the owner's computer, which
+     answers that viewer only. Nothing of the answer is kept here. Each viewer's reading is in the room's access log. */
+  logAsk(viewer, msg) {
+    const id = msg.id, room = msg.room, no = (error) => (isReqId(id) ? [{ to: viewer.id, msg: { t: 'log', id, room, p: msg.p, error } }] : []);
+    if (!isReqId(id) || !isOpaqueId(msg.p) || typeof room !== 'string' || room === viewer.id) return no('denied');
+    const owner = this.activeMember(room), r = owner && this.online(room) ? this.saved(room) : null;
+    if (!r) return no('gone');
+    const seen = r.room.mode === 'open' ? r.room : this.grantOf(room, viewer.id) ? r.full : null;
+    if (!seen) return no('denied');
+    if (!seen.log) return no('off');
+    const t = this.now(), key = `${viewer.id}>${room}`;
+    this.logAt ||= new Map(); this.pending ||= new Map();
+    if (t - (this.logAt.get(key) || 0) < LOG_REQ_MS) return no('busy');
+    for (const [k, q] of this.pending) if (t - q.at > LOG_WAIT_MS * 2) this.pending.delete(k);
+    if (this.pending.size >= LOG_PENDING_MAX || this.pending.has(id)) return no('busy');
+    this.logAt.set(key, t);
+    this.pending.set(id, { viewer: viewer.id, room, p: msg.p, at: t });
+    const last = this.row("SELECT at FROM access_log WHERE room = ? AND viewer = ? AND action = 'log' ORDER BY id DESC LIMIT 1", room, viewer.id);
+    if (!last || t - last.at >= LOG_SEEN_MS) this.access(room, viewer.id, 'log');
+    return [{ to: room, msg: { t: 'logreq', from: viewer.id, p: msg.p, id } }];
+  }
+  logAnswer(owner, msg) {
+    const q = isReqId(msg.id) ? this.pending?.get(msg.id) : null;
+    if (!q || q.room !== owner.id) return [];   // (only an answer to a question asked of this owner, once)
+    this.pending.delete(msg.id);
+    const out = { t: 'log', id: msg.id, room: owner.id, p: q.p };
+    if (msg.error) out.error = LOG_ERRORS.has(msg.error) ? msg.error : 'gone';
+    else out.items = cleanLog(msg.items);
+    return [{ to: q.viewer, msg: out }];
   }
 
   async leave(req) {
@@ -366,7 +447,7 @@ export class TeamCore {
     this.sql.exec('DELETE FROM view_codes WHERE room = ?', id);
     this.sql.exec('DELETE FROM access_log WHERE room = ?', id);
     this.sql.exec('DELETE FROM rooms WHERE member_id = ?', id);
-    this.live?.delete(id);
+    this.live?.delete(id); this.evs?.delete(id);
     return hosts.map((h) => ({ to: h, msg: { t: 'grants', list: this.grantsOut(h) } }));
   }
 

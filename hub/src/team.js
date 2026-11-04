@@ -13,7 +13,7 @@ const whose = (ws) => { try { return ws.deserializeAttachment()?.m || null; } ca
 export class Team extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
-    this.core = new TeamCore(ctx.storage.sql, { online: (id) => this.online(id) });
+    this.core = new TeamCore(ctx.storage.sql, { online: (id) => this.online(id), buildOf: (id) => this.buildOf(id) });
   }
 
   async fetch(request) {
@@ -56,11 +56,18 @@ export class Team extends DurableObject {
     const [client, server] = Object.values(new WebSocketPair());
     const old = this.ctx.getWebSockets(m.id);   // (one socket per member: a new one replaces the old)
     this.ctx.acceptWebSocket(server, [m.id]);
-    server.serializeAttachment({ m: m.id });
+    // (the office's version, as it says: ?b=, the count of commits on main it was built from; 0 for one too old to say)
+    const b = Math.max(0, Math.min(1e7, Math.floor(Number(url.searchParams.get('b')) || 0)));
+    server.serializeAttachment({ m: m.id, b });
     for (const o of old) { try { o.close(4000, 'replaced'); } catch { /* already closed */ } }
     server.send(JSON.stringify(this.core.hello(m.id, (id) => this.online(id))));
     if (!old.some((o) => o.readyState === OPEN)) this.deliver(this.core.presenceOut(m.id, true));
     return new Response(null, { status: 101, webSocket: client });
+  }
+  buildOf(id) {
+    let b = 0;
+    for (const ws of this.ctx.getWebSockets(id)) { if (ws.readyState !== OPEN) continue; try { b = Math.max(b, Number(ws.deserializeAttachment()?.b) || 0); } catch { /* none */ } }
+    return b;
   }
   online(id, except = null) { return this.ctx.getWebSockets(id).some((ws) => ws !== except && ws.readyState === OPEN); }
   // [{ to: member id, msg }]: each to that member's socket

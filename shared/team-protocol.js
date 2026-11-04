@@ -160,10 +160,17 @@ export function cleanName(name) {
      closed (the default): online or not, and how many are working / resting / waiting
      open:                 also each person: status, project, job title, subagents, the KIND of thing being done
    A file name or command (the event's label) is added only while the team's "details" setting is on (only the team's
-   creator can turn it on). Prompts, conversation titles, answers, folders, pids and costs never leave the computer. */
+   creator can turn it on). Prompts, conversation titles, answers, folders, pids and costs never leave the computer,
+   with one exception the room's owner chooses for their own room (off by default): "let others read my sessions'
+   conversations" (log). Then someone allowed to see the room may ask for one session's recent conversation; the owner's
+   computer answers that one viewer, through the hub, which passes it on and keeps none of it (cleanLog). */
 export const RELAY_BATCH_MS = 1500;      // changes are sent at most this often
 export const RELAY_BEAT_MS = 60_000;     // the whole room is sent again this often (the hub saves it from this)
 export const MSG_MAX = 32 * 1024;
+export const LOG_MSG_MAX = 192 * 1024;   // (a conversation going back to whoever asked for it: the one bigger message)
+export const LOG_ITEMS = 60, LOG_TEXT_MAX = 1500;
+export const LOG_REQ_MS = 3000;          // one request per viewer per room this often
+export const LOG_WAIT_MS = 8000;         // how long the viewer waits for the owner's computer
 export const MODES = new Set(['open', 'closed']);
 export const STATUSES = new Set(['work', 'rest', 'wait']);
 export const EVENT_TYPES = new Set(['agent', 'ask', 'bash', 'ci', 'command', 'commit', 'compact', 'deploy', 'edit', 'end', 'fail', 'fetch', 'glob',
@@ -185,9 +192,10 @@ export function presence(sessions) {
 /** This computer's room as it may leave it. sessions: the server's public session views (server/index.mjs pub());
     idOf(sessionId): an opaque id for it; redact: masks secrets in a label. share: a closed room that someone has been
     let into (step 4) sends its people too; the hub passes them only to those people. */
-export function roomView(sessions, { mode, details = false, idOf, redact = (x) => x, share = false }) {
+export function roomView(sessions, { mode, details = false, idOf, redact = (x) => x, share = false, log = false }) {
   const m = MODES.has(mode) ? mode : 'closed', room = { mode: m, counts: presence(sessions) };
   if (m !== 'open' && !share) return room;
+  if (log) room.log = true;   // (its sessions' conversations may be asked for)
   room.people = (sessions || []).slice(0, PEOPLE_MAX).map((s) => {
     const p = {
       id: idOf(s.id), status: statusOf(s.status),
@@ -215,6 +223,7 @@ export function cleanRoom(raw, { details = false, share = false } = {}) {
   const mode = MODES.has(raw.mode) ? raw.mode : 'closed', c = raw.counts || {};
   const room = { mode, counts: { work: int(c.work, 999), rest: int(c.rest, 999), wait: int(c.wait, 999) } };
   if ((mode !== 'open' && !share) || !Array.isArray(raw.people)) return room;
+  if (raw.log === true) room.log = true;
   room.people = raw.people.slice(0, PEOPLE_MAX).filter((p) => p && isOpaqueId(p.id)).map((p) => {
     const o = { id: p.id, status: statusOf(p.status), project: cleanName(p.project), role: cleanName(p.role), subs: int(p.subs, 99),
       act: p.act ? evType(p.act) : '', since: int(p.since, 1e14), at: int(p.at, 1e14) };
@@ -234,14 +243,34 @@ export function cleanEvents(list, { details = false } = {}) {
 /* The WebSocket's signature travels in its query (k, ts, n, sig), since a WebSocket can't carry headers everywhere. It
    signs GET and the path without that query, like any other request. */
 export const wsPath = (teamId) => `/t/${teamId}/ws`;
-export async function signedWsUrl(keys, hub, teamId, now = Date.now()) {
+// build: this office's version (server/updater.mjs: the count of commits on main it was built from), so the hub can hold
+// back an office older than the team allows; not signed (each office only speaks for itself)
+export async function signedWsUrl(keys, hub, teamId, now = Date.now(), build = 0) {
   const h = await signRequest(keys, { method: 'GET', path: wsPath(teamId), now });
   const u = new URL(hubBase(hub) + wsPath(teamId));
   u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
-  u.search = new URLSearchParams({ k: h[HEADERS.key], ts: h[HEADERS.ts], n: h[HEADERS.nonce], sig: h[HEADERS.sig], v: h[HEADERS.v] }).toString();
+  u.search = new URLSearchParams({ k: h[HEADERS.key], ts: h[HEADERS.ts], n: h[HEADERS.nonce], sig: h[HEADERS.sig], v: h[HEADERS.v], ...(build > 0 ? { b: String(Math.floor(build)) } : {}) }).toString();
   return u.toString();
 }
 /** The signature headers carried in a WebSocket URL's query, for verifyRequest. */
 export const wsHeaders = (searchParams) => ({
   [HEADERS.key]: searchParams.get('k'), [HEADERS.ts]: searchParams.get('ts'), [HEADERS.nonce]: searchParams.get('n'), [HEADERS.sig]: searchParams.get('sig'),
 });
+
+/* ---------- a session's conversation, asked for (the room's owner allows it: roomView log) ----------
+   { t: 'logreq', room, p, id } viewer -> hub -> owner ({ t: 'logreq', from, p, id }); the owner answers
+   { t: 'log', id, p, items } or { t: 'log', id, error } -> hub -> that viewer only ({ t: 'log', id, room, p, items | error }). */
+export const LOG_ROLES = new Set(['user', 'claude', 'tool', 'note', 'summary']);
+export const LOG_ERRORS = new Set(['off', 'gone', 'busy', 'timeout', 'denied']);
+export const isReqId = (id) => typeof id === 'string' && /^[A-Za-z0-9_-]{8,32}$/.test(id);
+const clip = (s, n) => { const a = [...String(s ?? '')]; return a.length > n ? `${a.slice(0, n).join('')}…` : a.join(''); };
+/** A conversation as it may travel: the last LOG_ITEMS items, each text at most LOG_TEXT_MAX characters, only the fields
+ *  the page shows (role, text, tool type and label, time). redact masks secrets (the owner's computer does it first). */
+export function cleanLog(items, redact = (x) => x) {
+  return (Array.isArray(items) ? items : []).filter((it) => it && LOG_ROLES.has(it.role)).slice(-LOG_ITEMS).map((it) => {
+    const o = { role: it.role, ts: int(it.ts, 1e14) };
+    if (it.role === 'tool') { o.type = evType(it.type); o.label = clip(redact(String(it.label ?? '')), 300); if (it.desc) o.desc = clip(redact(String(it.desc)), 300); }
+    else o.text = clip(redact(String(it.text ?? '')), LOG_TEXT_MAX);
+    return o;
+  });
+}

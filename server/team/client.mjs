@@ -125,6 +125,12 @@ export function createTeamClient({ dataDir, fetch = globalThis.fetch }) {
       if (!s) throw new TeamError('no-team');
       await writeState({ ...s, room: { ...(s.room || {}), mode } });
     },
+    /** Lets teammates who may see this room read its sessions' recent conversations (or not: the default). */
+    async setRoomLog(on) {
+      const s = await readState();
+      if (!s) throw new TeamError('no-team');
+      await writeState({ ...s, room: { ...(s.room || {}), log: !!on } });
+    },
     /** Stops (or starts again) sending anything to the hub: the room shows as offline. */
     async setPaused(paused) {
       const s = await readState();
@@ -135,6 +141,12 @@ export function createTeamClient({ dataDir, fetch = globalThis.fetch }) {
     async setPolicy({ details }) {
       const { s, keys } = await current();
       return (await call(s.hub, keys, 'POST', `/t/${s.teamId}/policy`, { details: !!details })).policy;
+    },
+
+    /** Admins: the oldest office version the team allows (server/updater.mjs build). Older offices update themselves;
+     *  until then the hub holds them back. Hub 0.6.0 and newer; an older hub answers not-found ('hub-old'). */
+    async requireUpdate(build) {
+      try { return (await hubCall('POST', 'update', { build })).version; } catch (e) { if (e.code === 'not-found') throw new TeamError('hub-old', e.status); throw e; }
     },
 
     // Admins: the team's creator is the first; admins make others admins and take members (never admins) out.

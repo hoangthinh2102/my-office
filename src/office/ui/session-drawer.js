@@ -295,7 +295,8 @@ function foldable(details, key) {
   details.addEventListener('toggle', () => { if (details.open) chatOpen.add(key); else chatOpen.delete(key); });
   return details;
 }
-function buildChat(items, who = 'Claude') {
+/** A conversation's items as the drawer shows them (also team mode's read-only one, ui/team-log.js: `you` names whose prompts they are). */
+export function buildChat(items, who = 'Claude', you = null) {
   const chat = el('div', 'chat');
   if (!items.length) chat.append(el('p', 'chat-empty', tr('drawer.chatEmpty')));
   let steps = null, lastTs = 0;
@@ -336,7 +337,7 @@ function buildChat(items, who = 'Claude') {
     const mine = it.role === 'user', m = el('div', 'msg msg--' + (mine ? 'user' : 'claude'));
     const head = el('div', 'msg-head');
     if (!mine) { const av = el('span', 'msg-av', who === 'Claude' ? 'C' : tr('drawer.subAvatar')); if (who !== 'Claude') av.dataset.tone = 'blue'; head.append(av); }
-    head.append(el('b', null, mine ? (who === 'Claude' ? tr('drawer.you') : tr('drawer.fromMain')) : who));
+    head.append(el('b', null, mine ? (you || (who === 'Claude' ? tr('drawer.you') : tr('drawer.fromMain'))) : who));
     if (it.ts) head.append(el('time', null, hhmm(it.ts)));
     if (!mine) { const cp = el('button', 'msg-copy', tr('drawer.copy')); cp.type = 'button'; cp.title = tr('drawer.copyMessage'); cp.addEventListener('click', () => copyText(it.text, cp)); head.append(cp); }
     const body = el('div', 'msg-body md');

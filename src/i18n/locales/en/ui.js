@@ -216,4 +216,19 @@ export default {
     saved: 'Saved the {ext} clip ({size}) to your Downloads.',
     unsupported: "This browser can't record a clip.",
   },
+  // the office updating itself (src/office/ui/update.js, server/updater.mjs)
+  update: {
+    waiting: 'A new version (#{n}) is out: it installs itself once the approvals waiting are answered.',
+    running: 'Updating My Office to version #{n}… The page reloads itself in a few minutes.',
+    done: 'My Office was updated to version #{n}.',
+    failed: "The update didn't work ({why}): the office still runs the old version. To see why: my-office update",
+    failedHeld: "The team requires version #{min} but the update didn't work ({why}): this computer still runs #{build} and is out of the team for now. To see why: my-office update",
+    held: "The team requires version #{min}; this computer runs #{build} but can't update itself ({why}). Run: my-office update",
+    why: {
+      branch: 'the folder is not on the main branch', changes: 'the folder has changes of its own', diverged: 'main here differs from GitHub',
+      'no-service': 'the office is not run by its background service', 'no-git': 'not a git clone', 'no-newer': 'GitHub has no such version yet',
+      off: 'updating on its own is off (OFFICE_AUTO_UPDATE=0)', build: 'the new version failed to build, back on the old one', pull: "couldn't download the new version",
+      lost: 'the update was cut short', start: "couldn't start the update", same: 'already the newest', other: 'unknown error',
+    },
+  },
 };
