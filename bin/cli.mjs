@@ -153,7 +153,8 @@ async function setup() {
 /* ---------- bringing a clone up to date: pull, install packages if they changed, build, restart ----------
    --auto: the office runs it on its own (server/updater.mjs) when there is a newer version or the team requires one.
    Then only main is pulled, the outcome is kept in data/update.json for the office to show after its restart, and a
-   build that fails goes back to the version that was running. OFFICE_RESTART_CMD replaces the service restart (tests). */
+   build that fails goes back to the version that was running. OFFICE_RESTART_CMD replaces the service restart (tests).
+   --from <commit>: setup.sh has pulled already (an install that was on <commit>): no pull, the rest the same. */
 const UPDATE_FILE = path.join(DATA_DIR, 'update.json');
 const noteUpdate = (o) => { try { const was = JSON.parse(fs.readFileSync(UPDATE_FILE, 'utf8')); fs.writeFileSync(UPDATE_FILE, JSON.stringify({ ...was, ...o }, null, 2)); } catch { /* not started by the office */ } };
 async function update() {
@@ -163,8 +164,10 @@ async function update() {
   if (!git('rev-parse', 'HEAD')) { fail('cli.update.notClone', 'no-git'); return; }
   if (git('status', '--porcelain', '--untracked-files=no')) { fail('cli.update.changed', 'changes'); return; }
   if (auto && git('rev-parse', '--abbrev-ref', 'HEAD') !== 'main') { fail('cli.update.notMain', 'branch'); return; }
-  const before = git('rev-parse', 'HEAD');
-  try { execFileSync('git', ['-C', ROOT, 'pull', '--ff-only', '--quiet', ...(auto ? ['origin', 'main'] : [])], { stdio: ['ignore', 'inherit', 'inherit'] }); } catch { fail('cli.update.pullFailed', 'pull'); return; }
+  const from = typeof opt('--from') === 'string' ? git('rev-parse', '--verify', '--quiet', `${opt('--from')}^{commit}`) : '';
+  if (opt('--from') && !from) { fail('cli.update.notClone', 'no-git'); return; }
+  const before = from || git('rev-parse', 'HEAD');
+  if (!from) { try { execFileSync('git', ['-C', ROOT, 'pull', '--ff-only', '--quiet', ...(auto ? ['origin', 'main'] : [])], { stdio: ['ignore', 'inherit', 'inherit'] }); } catch { fail('cli.update.pullFailed', 'pull'); return; } }
   const after = git('rev-parse', 'HEAD');
   if (before === after && builtFrom() === after && !args.includes('--force')) { ok(tr('cli.update.latest', { commit: after.slice(0, 7) })); if (auto) noteUpdate({ status: 'failed', why: 'same', at: Date.now() }); return; }
   const lockChanged = (a, b) => a !== b && git('diff', '--name-only', a, b).split('\n').includes('package-lock.json');
@@ -198,7 +201,7 @@ async function update() {
     try { execSync(restart, { stdio: 'ignore' }); } catch { /* reported below */ }
     (await waitUp()) ? ok(tr('cli.update.restarted', { port: PORT })) : warn(tr('cli.update.notUp', { cmd: restart }));
   } else ok(tr('cli.update.noService'));
-  console.log(`\n${tr('cli.update.done')}\n`);
+  if (!failed) console.log(`\n${tr('cli.update.done')}\n`);   // (back on the old version: not "updated")
 }
 
 async function uninstall() {

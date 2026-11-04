@@ -38,6 +38,8 @@ Sau bước 4 (hub **0.3.1**):
 Chuẩn bị chạy thử (hub **0.3.2**): **chỉ cần gửi link mời**.
 - Mở link bằng trình duyệt ra trang hướng dẫn: tên team, nút **Mở My Office để vào team** (mở
   `http://localhost:4310/?join=<link>` với link điền sẵn) và **một dòng lệnh cài** (`setup.sh`, đã kèm link).
+  Từ hub **0.6.1**, dưới nút có dòng nhắc: văn phòng cài từ trước tháng 11/2026 (hoặc vào rồi mà toà nhà trống, tức
+  bị giữ lại vì cũ hơn bản tối thiểu của team) thì dùng dòng lệnh cài: nó cập nhật rồi vào team luôn.
 - Lệnh `node bin/cli.mjs setup` làm cả lần cài đầu; `node bin/cli.mjs update` lên bản mới.
 - Checklist buổi thử: [docs/team-trial.md](../team-trial.md).
 
@@ -252,14 +254,18 @@ Cùng điều kiện như `/api/team/room`: loopback, không qua tunnel, cùng o
 2. Thư mục: `MY_OFFICE_DIR`, nếu không thì bản clone đã có ở `~/my-office` hoặc `~/gamota/my-office`, nếu không thì
    `~/my-office`. Đã có thì `git pull --ff-only` (có thay đổi riêng thì giữ nguyên). Thư mục có sẵn mà không phải My
    Office thì dừng.
-3. `npm ci`. Bản build cũ hơn code thì xoá để build lại.
+3. Máy đã có văn phòng chạy (có `node_modules` và `.next/BUILD_ID`, không có thay đổi riêng): code mới hơn bản đang
+   chạy thì `node bin/cli.mjs update --from <commit trước khi pull>`. Gói chỉ cài lại khi `package-lock.json` đổi, build
+   lại, build lỗi thì quay về commit cũ và build lại bản đó, rồi khởi động lại service của chính thư mục này. Lỗi thì
+   dừng với lời nhắn "văn phòng vẫn chạy bản cũ". (Trước đây `npm ci` và xoá `.next` chạy ngay dưới service đang
+   chạy, làm văn phòng sập.) Chưa cài, hoặc có thay đổi riêng: `npm ci`, bản build cũ hơn code thì xoá để build lại.
 4. `exec node bin/cli.mjs setup "$@"`.
 
 **`node bin/cli.mjs setup`**: đặt ngôn ngữ (`--lang`), kiểm Node 22, `install --service` (hook + chạy nền, build nếu
 chưa có), chờ `/health`, vào team nếu có `--join` (đã ở team thì bỏ qua; link hỏng thì chỉ cảnh báo và mở trang với
 `?join=` để vào lại), mở trang (`--no-open` để không mở).
 
-**`node bin/cli.mjs update [--force]`**: dừng nếu có thay đổi riêng (file đã theo dõi); `git pull --ff-only`; in các
+**`node bin/cli.mjs update [--force] [--from <commit>]`** (`--from`: `setup.sh` đã pull, bản đang chạy là `<commit>`: bỏ bước pull, còn lại như dưới): dừng nếu có thay đổi riêng (file đã theo dõi); `git pull --ff-only`; in các
 commit mới; `npm ci` nếu `package-lock.json` đổi; build lại; khởi động lại service **chỉ khi service chạy đúng thư mục
 này**. Commit đã build lưu ở `.next/office-commit`: không có gì mới thì không build.
 

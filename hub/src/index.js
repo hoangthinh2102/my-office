@@ -18,7 +18,7 @@ import { invitePage } from './invite-page.js';
 
 export { Team } from './team.js';
 
-const VERSION = '0.6.0';
+const VERSION = '0.6.1';
 const json = (status, body) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
 const ACTIONS = new Set(['invites', 'join', 'me', 'leave', 'policy', 'ws', 'knock', 'answer', 'revoke', 'code', 'redeem', 'access', 'promote', 'stepdown', 'remove', 'rename', 'update']);
 

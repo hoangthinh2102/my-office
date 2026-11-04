@@ -18,6 +18,17 @@ test('the invite page: the team, both ways in, and nothing unescaped', () => {
   assert.ok(invitePage({ link: LINK, team: 'T', accept: 'en', setupUrl: 'https://x.test/s.sh' }).includes('curl -fsSL https://x.test/s.sh | bash -s -- --lang en'));
 });
 
+test('the invite page tells an office installed long ago to use the install line (it updates, then joins)', () => {
+  for (const [lang, note, title] of [['vi', 'Cài từ trước tháng 11/2026', 'hoặc cần cập nhật'], ['en', 'Installed before November 2026', 'or needs updating']]) {
+    const html = invitePage({ link: LINK, team: 'T', accept: lang });
+    const at = html.indexOf(note);
+    assert.ok(at > html.indexOf('localhost:4310/?join='), `${lang}: under the open button`);
+    assert.ok(at < html.indexOf('curl -fsSL'), `${lang}: before the install line`);
+    assert.ok(html.includes(title), `${lang}: the install part says it updates too`);
+  }
+  assert.ok(!invitePage({ link: LINK, team: 'T', expired: true, accept: 'en' }).includes('Installed before'));   // (no way in: nothing to update for)
+});
+
 test('an expired invite page says so, with no way in', () => {
   const vi = invitePage({ link: LINK, team: 'Gam<ota>', expired: true, accept: 'vi' });
   assert.ok(vi.includes('Link mời đã hết hạn'));
