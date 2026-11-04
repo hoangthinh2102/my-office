@@ -57,7 +57,8 @@ export default {
     confirmStepdown: 'Click again to stop',
     lastAdmin: "You're the only admin: make someone else an admin first.",
     otherAdmin: 'Only they can step down',
-    done: { promote: '{name} is an admin now.', remove: 'Removed {name} from the team.', stepdown: "You're not an admin any more." },
+    rename: 'Rename', renameLabel: 'Your new name in the team', save: 'Save', cancel: 'Cancel',
+    done: { promote: '{name} is an admin now.', remove: 'Removed {name} from the team.', stepdown: "You're not an admin any more.", rename: 'Your name is now {name}.' },
     failed: "Couldn't do that: {why}",
     err: {
       'not-owner': 'Only an admin can do that.',
@@ -67,6 +68,11 @@ export default {
       'already-admin': 'They are an admin already.',
       'not-admin': "You're not an admin any more.",
       'no-member': "They aren't in the team any more.",
+      'name-taken': 'Someone in the team already has that name. Pick another.',
+      'too-many-renames': "You've changed your name a lot just now. Try again in 10 minutes.",
+      'bad-name': "The name can't be empty.",
+      'bad-request': "That name won't do.",
+      'hub-old': "The team's hub needs updating (0.5.0) to change names. Ask whoever runs the hub to deploy it again.",
     },
   },
   lift: {

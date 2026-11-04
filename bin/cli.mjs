@@ -272,7 +272,7 @@ function start() {
 }
 /* ---------- team mode (docs/features/team-mode.md) ----------
    my-office team create --hub <url> --name <team> [--me <your name>] [--token <hub's create token>]
-   my-office team invite | join <invite link> [--me <name>] | status | leave [--local] | restore <recovery key>
+   my-office team invite | join <invite link> [--me <name>] | status | rename <new name> | leave [--local] | restore <recovery key>
    my-office team room open|closed | pause | resume | rooms | policy details on|off
    my-office team grants | revoke <name> | code | redeem <code>   (closed rooms: who may look in, view codes)
    my-office team admin add <name> | admin stepdown | remove <name>   (admins) */
@@ -367,6 +367,11 @@ async function team() {
       if (m.length !== 1) { bad(tr(m.length ? 'cli.team.memberTwice' : 'cli.team.noSuchMember', { name: who })); process.exitCode = 1; return; }
       if (sub === 'remove') { await client.remove(m[0].id); ok(tr('cli.team.removed', { name: m[0].name })); }
       else { await client.promote(m[0].id); ok(tr('cli.team.promoted', { name: m[0].name })); }
+    } else if (sub === 'rename') {
+      const name = args.slice(2).filter((a) => !a.startsWith('--')).join(' ');
+      if (!name.trim()) { console.log(tr('cli.team.usage')); process.exitCode = 1; return; }
+      const r = await client.rename(name);
+      ok(tr('cli.team.renamed', { name: r.me.name }));
     } else if (sub === 'admin' && arg === 'stepdown') {
       await client.stepDown();
       ok(tr('cli.team.steppedDown'));

@@ -65,7 +65,11 @@ export function startDemoTeam(t0 = Date.now()) {
     }
     return { ok: false, code: 'bad-request' };
   });
-  setDemoMembers((action, id) => {
+  setDemoMembers((action, id, name) => {
+    if (action === 'rename') {
+      if (t.members.some((x) => x.id !== 'demo-me' && x.name.toLowerCase() === String(name).toLowerCase())) return { ok: false, code: 'name-taken' };
+      t.members = t.members.map((x) => (x.id === 'demo-me' ? { ...x, name } : x)); t.me = { ...t.me, name }; return show();
+    }
     const m = t.members.find((x) => x.id === id), admins = t.members.filter((x) => x.role === 'admin').length;
     if (action === 'stepdown') { if (admins <= 1) return { ok: false, code: 'last-admin' }; t.members = t.members.map((x) => (x.id === 'demo-me' ? { ...x, role: 'member' } : x)); t.me = { ...t.me, role: 'member', owner: false }; return show(); }
     if (!t.me.owner) return { ok: false, code: 'not-owner' };

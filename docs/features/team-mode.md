@@ -51,6 +51,12 @@ Bước 6, **admin** (hub **0.4.0**). Cùng bản này, **link mời dùng chung
 - trên trang: phần **Thành viên** trong panel toà nhà. Lệnh: `team admin add <tên>`, `team admin stepdown`,
   `team remove <tên>`.
 
+**Đổi tên** (hub **0.5.0**): mỗi người đổi được tên của chính mình sau khi vào team, không ai đổi tên người khác (kể
+cả admin). Không trùng tên người khác đang trong team (không phân biệt hoa thường), vì lệnh tìm thành viên theo tên.
+Tối đa 5 lần mỗi 10 phút. Mọi người đang online thấy tên mới ngay: danh sách thành viên, thẻ phòng, biển tên và nhãn
+tầng trong toà nhà 3D, danh sách gõ cửa / được xem. Trên trang: nút **Đổi tên** ở dòng của bạn trong **Thành viên**.
+Lệnh: `team rename <tên mới>`. Hub cũ hơn 0.5.0 thì báo cần cập nhật hub (`hub-old`).
+
 Lộ trình ở cuối file.
 
 ## Cách sử dụng
@@ -63,6 +69,7 @@ Lộ trình ở cuối file.
 | `team invite` | Link mời: ai có link cũng vào được, trong 1 giờ. **Chỉ admin**. |
 | `team join <link mời> [--me <tên>]` | Vào team. |
 | `team status` | Team, tên của bạn, chế độ phòng, danh sách thành viên. |
+| `team rename <tên mới>` | Đổi tên của bạn trong team (hub 0.5.0). Không trùng tên người khác; tối đa 5 lần mỗi 10 phút. |
 | `team leave [--local]` | Rời team trên hub rồi xoá khoá khỏi máy. `--local`: xoá trên máy kể cả khi không kết nối được hub. |
 | `team restore <khoá khôi phục>` | Làm lại đúng thành viên đó trên máy này (máy mới, cài lại máy). |
 | `team room open\|closed` | Mở phòng (mọi thành viên xem được, chỉ xem) hoặc đóng lại. Có hiệu lực ngay, không cần khởi động lại. |
@@ -222,13 +229,15 @@ gập lại sẵn, tiêu đề ghi số người và số admin. Mỗi dòng: t�
   thành "Bấm lần nữa…", 5 giây không bấm thì thôi), vì cho làm admin rồi thì chỉ người đó tự thôi được.
 - Ở dòng của mình, admin có **Thôi làm admin** (hai lần bấm). Admin duy nhất thì nút mờ, kèm lời nhắc.
 - Ở dòng của admin khác: "Chỉ họ tự thôi được".
+- Ở dòng của mình, ai cũng có **Đổi tên**: tên thành ô nhập, **Lưu** / **Huỷ** (Enter / Esc). Đang gõ thì danh sách
+  không vẽ lại, nên chữ không mất. Lỗi (trùng tên, đổi quá nhiều, hub cũ) hiện toast, ô vẫn giữ chữ đã gõ.
 - Người bị xoá: socket bị đóng (4001), văn phòng của họ ghi "Bạn không còn ở team này…" và chỉ lệnh `team leave` để
   quên team trên máy đó. Phòng của họ biến khỏi toà nhà của mọi người ngay.
 - Trên điện thoại các nút bị khoá (chỉ xem), như các phần khác.
 
 | Method | Path | Body | Trả về |
 | --- | --- | --- | --- |
-| `POST` | `/api/team/member` | `{ action: 'promote' \| 'stepdown' \| 'remove', member? }` | `{ ok, team }` · `{ ok: false, code }` (vd. `last-admin`, `is-admin`) |
+| `POST` | `/api/team/member` | `{ action: 'promote' \| 'stepdown' \| 'remove', member? }` hoặc `{ action: 'rename', name }` | `{ ok, team }` · `{ ok: false, code }` (vd. `last-admin`, `is-admin`, `name-taken`, `too-many-renames`, `hub-old`) |
 
 Cùng điều kiện như `/api/team/room`: loopback, không qua tunnel, cùng origin, JSON.
 
@@ -277,6 +286,7 @@ Mọi yêu cầu (trừ `GET /` và `GET /j/…`) phải **có chữ ký** (xem 
 | POST | `/t/<team>/leave` | thành viên | → 200 `{ ok: true }`. Socket của người đó bị đóng (mã 4001), mọi người nhận `{ t: 'gone' }` và `{ t: 'members' }`. Admin cuối cùng khi team còn người khác: 409 `last-admin` |
 | POST | `/t/<team>/promote` | admin | Body `{ member }` → 200 `{ members, me }`. 409 `already-admin`, 404 `no-member` |
 | POST | `/t/<team>/stepdown` | admin (chính mình) | → 200 `{ members, me }`. 409 `not-admin`, 409 `last-admin` |
+| POST | `/t/<team>/rename` | thành viên | Body `{ name }` → 200 `{ members, me }`: đổi tên của chính mình. Mọi người nhận `members`, phòng của người đó (tên mới), và chủ các phòng người đó đang gõ cửa / được xem nhận lại `knocks` / `grants`. 409 `name-taken`, 429 `too-many-renames`, 400 `bad-request` (tên rỗng). Ghi `audit` `rename` kèm tên cũ |
 | POST | `/t/<team>/remove` | admin | Body `{ member }` → 200 `{ members, me }`; như người đó tự rời. 403 `is-admin` (admin khác), 409 `remove-self`, 404 `no-member` |
 | POST | `/t/<team>/policy` | admin | Body `{ details: boolean }` → 200 `{ policy }`. Người khác: 403 `not-owner` |
 | POST | `/t/<team>/knock` | thành viên | Body `{ room }` → 201 `{ knock: { room, at } }`; đang chờ sẵn thì 200, không báo lần hai |
@@ -497,7 +507,9 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
 - `tests/unit/team-admins.test.mjs` (bước 6): người tạo là admin; thành viên thường không mời, không đổi cài đặt, không
   cho ai làm admin; cho làm admin thì mọi người nhận danh sách mới; admin không xoá được admin khác, không tự xoá mình;
   người bị xoá mất quyền ngay; admin cuối cùng không thôi, không rời được khi còn người; team tạo trước 0.4.0 tự có
-  admin là người tạo; relay giữ danh sách thành viên và vai trò của mình.
+  admin là người tạo; relay giữ danh sách thành viên và vai trò của mình. Đổi tên: chỉ tên của mình, làm sạch tên, không
+  trùng (mọi kiểu hoa thường), tên rỗng bị từ chối, 5 lần mỗi 10 phút, mọi người nhận tên mới (cả danh sách gõ cửa /
+  được xem); văn phòng ghi tên mới vào `team.json`, hub cũ thì `hub-old`.
 - Bước 6 đã chạy tay end-to-end: `wrangler dev` cộng ba văn phòng (An, Bình, Chi). Lệnh: Chi (thành viên) bị từ chối
   `not-owner`; An là admin duy nhất không thôi / không rời được; An cho Bình làm admin; hai admin không xoá được nhau;
   Bình mời được rồi thôi làm admin. Playwright trên trang: An bấm hai lần cho Chi làm admin, Chi thấy nút cài đặt và

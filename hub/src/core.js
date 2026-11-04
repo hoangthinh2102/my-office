@@ -33,6 +33,8 @@ const MAX_OPEN_INVITES = 10;      // per member, at one time
 const INVITE_KEEP_MS = 7 * 24 * 3600_000;   // how long an expired invite is remembered
 const JOIN_FAILS_MAX = 20;        // wrong invite codes per team in JOIN_FAILS_WINDOW before joining is paused
 const JOIN_FAILS_WINDOW = 10 * 60_000;
+const RENAMES_MAX = 5;            // name changes a member may make in RENAME_WINDOW
+const RENAME_WINDOW = 10 * 60_000;
 const BODY_MAX = 16 * 1024;
 const KNOCKS_MAX = 5;             // knocks a member may make in ACCESS_WINDOW
 const REDEEM_FAILS_MAX = 10;      // wrong view codes a member may try in ACCESS_WINDOW
@@ -82,6 +84,7 @@ export class TeamCore {
         case 'POST promote': return await this.promote(req);
         case 'POST stepdown': return await this.stepDown(req);
         case 'POST remove': return await this.remove(req);
+        case 'POST rename': return await this.rename(req);
         case 'POST knock': return await this.knock(req);
         case 'POST answer': return await this.answer(req);
         case 'POST revoke': return await this.revoke(req);
@@ -229,6 +232,28 @@ export class TeamCore {
     const send = this.drop(t.id);
     this.log(m.id, 'remove', t.id);
     return { status: 200, body: { members: this.membersOut(), me: this.meOut(m.id) }, left: t.id, send: [...send, ...this.membersFan()] };
+  }
+
+  /* ---------- your own name ----------
+     Everyone changes their own name, nobody else's (admins included). No two members may share a name, as the command
+     line finds members by name. Everyone online sees the new name at once: the member list, the room, and the
+     knocks and grants it is on. */
+  async rename(req) {
+    const m = await this.member(req), b = this.body(req), name = cleanName(b.name), t = this.now();
+    if (!name) fail(400, 'bad-request');
+    const was = this.row('SELECT name FROM members WHERE id = ?', m.id).name;
+    if (name === was) return { status: 200, body: { members: this.membersOut(), me: this.meOut(m.id) } };
+    const taken = this.members().some((x) => x.id !== m.id && x.name.toLowerCase() === name.toLowerCase());
+    if (taken) fail(409, 'name-taken');
+    const recent = this.row('SELECT COUNT(*) AS n FROM audit WHERE actor = ? AND action = ? AND at > ?', m.id, 'rename', t - RENAME_WINDOW).n;
+    if (recent >= RENAMES_MAX) fail(429, 'too-many-renames');
+    this.sql.exec('UPDATE members SET name = ? WHERE id = ?', name, m.id);
+    this.log(m.id, 'rename', was);
+    const me = this.activeMember(m.id);
+    // the rooms that list this member as let in or knocking get those lists again, with the new name
+    const hosts = [...new Set(this.rows(`SELECT room FROM grants WHERE viewer = ? UNION SELECT room FROM knocks WHERE viewer = ?`, m.id, m.id).map((r) => r.room))];
+    const lists = hosts.flatMap((h) => [{ to: h, msg: { t: 'grants', list: this.grantsOut(h) } }, { to: h, msg: { t: 'knocks', list: this.knocksOut(h) } }]);
+    return { status: 200, body: { members: this.membersOut(), me: this.meOut(m.id) }, send: [...this.membersFan(), ...this.fanRoom(me), ...lists] };
   }
 
   /* ---------- the team's settings ----------

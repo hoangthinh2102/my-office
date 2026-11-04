@@ -2546,11 +2546,11 @@ const server = http.createServer((req, res) => {
     }).catch(() => json(res, 400, { ok: false, message: tr('server.badRequest') }));
     return;
   }
-  // team mode, admins: make a member an admin, stop being one yourself, take a member out (the hub checks who may; this computer only)
+  // team mode, members: change your own name; admins: make a member an admin, stop being one yourself, take a member out (the hub checks who may; this computer only)
   if (req.method === 'POST' && url.pathname === '/api/team/member') {
     if (!isLoopback(req) || !sameOriginOf(req) || !String(req.headers['content-type'] || '').startsWith('application/json')) { json(res, 403, { ok: false, message: tr('server.forbidden') }); return; }
     readJson(req).then(async (b) => {
-      const act = { promote: (m) => teamClient.promote(m), stepdown: () => teamClient.stepDown(), remove: (m) => teamClient.remove(m) }[b?.action];
+      const act = { promote: (m) => teamClient.promote(m), stepdown: () => teamClient.stepDown(), remove: (m) => teamClient.remove(m), rename: () => teamClient.rename(b.name) }[b?.action];
       if (!act) { json(res, 400, { ok: false, message: tr('server.badRequest') }); return; }
       try { team.setMembers(await act(b.member)); } catch (e) { json(res, 400, { ok: false, code: e.code || 'error' }); return; }
       json(res, 200, { ok: true, team: team.state() });
