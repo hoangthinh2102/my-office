@@ -6,6 +6,7 @@ import { rand } from '../core/env.js';
 import { onTeam, setDemoRoom } from '../ui/team.js';
 import { setDemoAccess } from '../ui/team-access.js';
 import { setDemoMembers } from '../ui/team-members.js';
+import { setDemoLog } from '../ui/team-log.js';
 
 const PEOPLE = [
   ['Lan', 'open', [['Dev', 'shop-api', 'work', 'edit'], ['Reviewer', 'shop-api', 'rest', ''], ['QA', 'shop-web', 'wait', 'ask']]],
@@ -19,6 +20,17 @@ const PEOPLE = [
   ['Tú', 'closed', [['Dev', 'infra', 'work', 'bash'], ['Dev', 'infra', 'wait', 'ask']]],
 ];
 const ACTS = ['read', 'edit', 'bash', 'grep', 'test', 'web', 'write', 'commit', 'push', 'plan', 'glob', 'agent'];
+// whose rooms let you read their sessions' conversations, and what they say (made up)
+const LOG_ON = ['Lan', 'Nam'];
+const demoConvo = (p, t0) => [
+  { role: 'user', text: `Sửa lỗi giỏ hàng ở ${p.project}: thêm 2 sản phẩm giống nhau thì số lượng bị nhân đôi.`, ts: t0 - 26 * 60e3 },
+  { role: 'claude', text: 'Mình xem phần cộng dồn sản phẩm trước.', ts: t0 - 25 * 60e3 },
+  { role: 'tool', type: 'grep', label: 'addToCart', ts: t0 - 25 * 60e3 }, { role: 'tool', type: 'read', label: 'src/cart/store.ts', ts: t0 - 24 * 60e3 },
+  { role: 'claude', text: 'Lỗi nằm ở `mergeLine`: nó cộng `qty` hai lần khi sản phẩm đã có trong giỏ.\n\n- Sửa `mergeLine` chỉ cộng một lần\n- Thêm test cho trường hợp này', ts: t0 - 22 * 60e3 },
+  { role: 'tool', type: 'edit', label: 'src/cart/store.ts', ts: t0 - 20 * 60e3 }, { role: 'tool', type: 'test', label: 'npm test cart', ts: t0 - 18 * 60e3 },
+  { role: 'claude', text: 'Test xanh (14/14). Bạn xem lại diff rồi mình commit nhé.', ts: t0 - 17 * 60e3 },
+  { role: 'user', text: 'ok commit đi', ts: t0 - 6 * 60e3 }, { role: 'tool', type: 'commit', label: 'fix(cart): count a repeated item once', ts: t0 - 5 * 60e3 },
+];
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 // a little of what each room's people did in the last half hour, oldest first, ending with what they do now
 const seedEvents = (people, t0) => people.flatMap((p, k) => [
@@ -31,7 +43,7 @@ export function startDemoTeam(t0 = Date.now()) {
   const rooms = PEOPLE.map(([name, mode, ppl], i) => {
     const people = ppl.map(([role, project, status, act], k) => ({ id: `demo${i}p${k}`, status, project, role, subs: k === 0 && i % 3 === 0 ? 2 : 0, act, since: t0 - (k + 1) * 7 * 60e3, at: t0 - k * 60e3 }));
     const sees = mode === 'open' || mode === 'shared';
-    return { member: { id: `demo-m${i}`, name }, online: mode !== 'offline', mode: mode === 'open' ? 'open' : 'closed', counts: counts(people), ...(sees ? { people, events: seedEvents(people, t0) } : {}), ...(mode === 'shared' ? { access: { until: t0 + 42 * 60e3 } } : {}), at: t0 };
+    return { member: { id: `demo-m${i}`, name }, online: mode !== 'offline', mode: mode === 'open' ? 'open' : 'closed', counts: counts(people), ...(sees ? { people, events: seedEvents(people, t0) } : {}), ...(LOG_ON.includes(name) ? { log: true } : {}), ...(mode === 'shared' ? { access: { until: t0 + 42 * 60e3 } } : {}), at: t0 };
   });
   const byName = (n) => rooms.find((r) => r.member.name === n).member;
   const t = {
@@ -84,8 +96,14 @@ export function startDemoTeam(t0 = Date.now()) {
     else { t.members = t.members.filter((x) => x.id !== id); const i = rooms.findIndex((r) => r.member.id === id); if (i >= 0) rooms.splice(i, 1); t.grants = t.grants.filter((g) => g.viewer.id !== id); t.knocks = t.knocks.filter((k) => k.viewer.id !== id); }
     return show();
   });
+  setDemoLog((room, p) => {
+    const r = rooms.find((x) => x.member.id === room), who = r?.people?.find((x) => x.id === p);
+    if (!r?.log) return { ok: false, error: 'off' };
+    return who ? { ok: true, items: demoConvo(who, Date.now()) } : { ok: false, error: 'gone' };
+  });
   setDemoRoom((mode) => {
-    if (typeof mode === 'object') t.policy = { details: !!mode.details };   // the team's setting (you made the team)
+    if (typeof mode === 'object' && 'log' in mode) t.room = { ...t.room, log: !!mode.log };   // your sessions' conversations
+    else if (typeof mode === 'object') t.policy = { details: !!mode.details };   // the team's setting (you made the team)
     else t.room = mode === 'paused' ? { ...t.room, paused: true } : { mode, paused: false };
     onTeam({ ...t });
   });

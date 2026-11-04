@@ -32,7 +32,8 @@ Claude Code ──hooks (curl, loopback only)──▶ server/index.mjs ──SS
 | `agent-support.mjs` | Reads what the agent-support skills leave on this computer (`~/.agent-support`): the workspace's repos, each Lark task's state, the log of MRs opened; ties performance jobs to Lark tasks. Read only. |
 | `perf.mjs` | The performance board: one line per job (a prompt until Stop) in `data/perf/YYYY-MM-DD.jsonl` with its tokens, API-price cost, time, tool failures and overtime; per-person scores (`/api/perf`). |
 | `prefs.mjs` | The office's language (`data/prefs.json`, `OFFICE_LANG`) and the server's translator `tr()`. |
-| `team/identity.mjs`, `team/client.mjs`, `team/relay.mjs` | Team mode ([docs/features/team-mode.md](features/team-mode.md)): this computer's team key (the macOS keychain, else `data/team-key`), the signed calls to the team hub (`my-office team …`), and the relay: one WebSocket that sends this room, cut down to what its mode allows, and keeps everyone else's for `GET /api/team` and the page's building (`{k:'team'}` in the live stream; `POST /api/team/room` opens, closes or pauses this room, `POST /api/team/policy` is the creator's team setting, both from this computer only; the 3D building: `world/team-tower.js`, `ui/team-lift.js`). The protocol itself is `shared/team-protocol.js`, used by the hub too. |
+| `updater.mjs` | Keeping the office up to date on its own: main on its own git remote every 15 minutes, or when the team's hub requires a newer version; `my-office update --auto` (pull, packages, build, restart the service, back to the old version if the build fails), only for a plain install on main run by its own service. |
+| `team/identity.mjs`, `team/client.mjs`, `team/relay.mjs` | Team mode ([docs/features/team-mode.md](features/team-mode.md)): this computer's team key (the macOS keychain, else `data/team-key`), the signed calls to the team hub (`my-office team …`), and the relay: one WebSocket that sends this room, cut down to what its mode allows, and keeps everyone else's for `GET /api/team` and the page's building (`{k:'team'}` in the live stream; `POST /api/team/room` opens, closes or pauses this room or lets its sessions' conversations be read (`GET /api/team/log` asks for one of someone else's), `POST /api/team/policy` is the creator's team setting, both from this computer only; the 3D building: `world/team-tower.js`, `ui/team-lift.js`). The protocol itself is `shared/team-protocol.js`, used by the hub too. |
 
 The team hub is its own small program in `hub/`: a Cloudflare Worker with one Durable Object (SQLite) per team. `hub/src/core.js` holds the rules and runs under Node's SQLite in the unit tests.
 
@@ -101,9 +102,9 @@ engine switches to demo mode and talks to no API.
 | `core/optimize.js` | 106 | Merging static meshes into fewer draw calls, then starting. |
 | `core/schedule.js` | 36 | Office hours, set by the director (the director's office → Office hours; kept by the server, server/company.mjs) and lived by everyone: arriving in the morning, breakfast at the pantry until work starts, lunch, the midday nap, the afternoon coffee, packing up and going home when work ends. |
 | `core/state.js` | 3 | Values that more than one module assigns (the clock, the selection, mode switches…), on one shared object so any module can change them. |
-| `demo/demo-team.js` | 81 | Demo mode's team (team mode's building, ui/team.js): nine pretend teammates on three floors, some rooms open, some closed (Vy has let you into hers for a while), one person offline, someone knocking on your door, and work going on in the rooms you can see. |
-| `demo/demo.js` | 294 | Demo mode: fictional projects and a fictional Mac. |
-| `interact/first-person.js` | 261 | First person: walk the office as your own character, and (with the city outside) down the lift and out on the street: the pavements, the zebras (the traffic stops for you), the shops, the bánh mì cart. |
+| `demo/demo-team.js` | 121 | Demo mode's team (team mode's building, ui/team.js): nine pretend teammates on three floors, some rooms open, some closed (Vy has let you into hers for a while), one person offline, someone knocking on your door, and work going on in the rooms you can see. |
+| `demo/demo.js` | 297 | Demo mode: fictional projects and a fictional Mac. |
+| `interact/first-person.js` | 283 | First person: walk the office as your own character, and (with the city outside) down the lift and out on the street: the pavements, the zebras (the traffic stops for you), the shops, the bánh mì cart. |
 | `interact/place-cards.js` | 201 | Place cards: what happens at each place. |
 | `interact/place-chips.js` | 182 | Place chips over the furniture and label decluttering. |
 | `interact/props.js` | 276 | Furniture you can point at: highlight, tooltip, click actions. |
@@ -146,8 +147,8 @@ engine switches to demo mode and talks to no API.
 | `replay/replay.js` | 162 | Replay and recording. |
 | `replay/timeline.js` | 193 | The timeline: one lane per session. |
 | `scene/blocks.js` | 32 | Building blocks: materials, rounded boxes, cylinders, rugs, canvas textures. |
-| `scene/merge.js` | 47 | Static meshes merged into fewer draw calls, every part keeping its colour (core/optimize.js, world/tower-floor.js). |
 | `scene/lights.js` | 35 | Sun, sky light and the room lamps (per-room night lighting on the company floor). |
+| `scene/merge.js` | 47 | Static meshes merged into fewer draw calls (core/optimize.js for the office, world/tower-floor.js for a team floor): the meshes that share a kind of material become one mesh, every part keeping its colour as a vertex colour. |
 | `scene/quality.js` | 77 | Graphics quality: Auto (the default), Low, Medium or High, each viewer's own choice (Settings → Display). |
 | `scene/renderer.js` | 91 | Renderer, cameras, orbit controls, post-processing and environment light. |
 | `ui/activity.js` | 302 | The activity column and the session list. |
@@ -170,20 +171,22 @@ engine switches to demo mode and talks to no API.
 | `ui/portraits.js` | 62 | Portraits of the two character looks for Settings → Characters: two people in each look, drawn by the office's own renderer (same materials, light and tone mapping, so they match what you will see) into a canvas, the first time the tab opens. |
 | `ui/recent-rail.js` | 79 | The session list's "All" filter: everyone in the office, then every Claude Code conversation of the last two weeks that isn't open now (server/recent.mjs), under "Closed". |
 | `ui/session-account.js` | 54 | "Change account" in a session's drawer (on this computer only): the accounts of the plan card, each with what it has left. |
-| `ui/session-drawer.js` | 431 | The session drawer: chat, steps, subagents. |
-| `ui/settings.js` | 129 | Settings popover: backdrop, floor plan, look, time, toggles. |
+| `ui/session-drawer.js` | 432 | The session drawer: chat, steps, subagents. |
+| `ui/settings.js` | 132 | Settings popover: backdrop, floor plan, look, time, toggles. |
+| `ui/side-fold.js` | 28 | Folding the side columns away (wide screens; markup: SessionRail.tsx #fold-left, ActivityPanel.tsx #fold-right): one click on the arrow at a column's inner edge folds it to a narrow strip, the office gets the room; the same arrow opens it again. |
+| `ui/skills.js` | 142 | Settings → Skills (markup: SettingsPanel.tsx): the skills and plugins Claude Code on this computer loads, and adding or removing them without the command line. |
 | `ui/task-sheet.js` | 98 | "Giao việc": giving Claude work from the group chat (server/tasks.mjs runs it on the Mac). |
 | `ui/team-access.js` | 150 | Team mode's closed rooms (docs/features/team-mode.md, step 4): knocking on someone's closed door, answering knocks on yours (an hour, the rest of the day, always, or no), who may look in and taking that back, one-time view codes, and your room's access log. |
 | `ui/team-join.js` | 91 | Team mode without the command line: an admin makes an invite link in the building panel, and someone not in a team yet joins with one in Settings → More (markup: TeamModal.tsx, SettingsPanel.tsx). |
-| `ui/team-members.js` | 85 | Team mode's members, in the building panel: who is in the team and who is an admin; admins make others admins and take members (never another admin) out, an admin steps down only themselves. |
-| `ui/skills.js` | 142 | Settings → Skills: this computer's skills and plugins; add one from a folder of yours (linked or copied), search a marketplace and install, remove with a second click (server/skills.mjs, /api/skills). |
-| `ui/team-lift.js` | 131 | Team mode's lift (headquarters plan only; markup: src/components/office/Stage.tsx #tw-lift, #tw-card): the buttons down the stage's right edge that choose what you look at in the building (world/team-tower.js): the whole building, a floor, or your own floor. |
-| `ui/team-side.js` | 91 | Team mode: the side columns while you look at someone else's room (its sessions on the left, its activity on the right, view only); "Yours" goes back. |
-| `ui/team.js` | 154 | Team mode's building (the building button in the top bar; markup: src/components/office/TeamModal.tsx): your own room, which you can open, close or pause from this computer, and everyone else's rooms floor by floor, view only. |
+| `ui/team-lift.js` | 183 | Team mode's lift (headquarters plan only; markup: src/components/office/Stage.tsx #tw-lift, #tw-card): the buttons down the stage's right edge that choose what you look at in the building (world/team-tower.js): the whole building, a floor, or your own floor. |
+| `ui/team-log.js` | 80 | Read one session's conversation in someone else's room (team mode; markup: src/components/office/TeamLogDrawer.tsx): only when that room's owner lets it be read (room.log, their switch in the Team window or `my-office team room log`) and you may see the room. |
+| `ui/team-members.js` | 116 | Team mode's members, in the building panel (markup: TeamModal.tsx): who is in the team and who is an admin. |
+| `ui/team-side.js` | 152 | The side columns while you look at someone else's room in the building (headquarters plan; markup: SessionRail.tsx #team-rail, ActivityPanel.tsx #team-feed): a click on a room or on someone in it (ui/team-lift.js) turns the left column into that room's sessions and the right one into its activity, view only, as the hub sent them (an open room: who is in and what they do, labels only when the team's details setting is on; a closed one: how many, and the knock). |
+| `ui/team.js` | 193 | Team mode's building (the building button in the top bar; markup: src/components/office/TeamModal.tsx): your own room, which you can open, close or pause from this computer, and everyone else's rooms floor by floor, view only. |
 | `ui/timelapse.js` | 156 | A 15-second clip of the office to share: square (1080 × 1080) for a feed or vertical (1080 × 1920) for Reels, TikTok and Shorts, the camera turning slowly round the floor, people at four times their pace, the day running into the evening (a clock in the corner from 8:00 to 23:00, the lights coming on at six), a title at the start and the day's numbers over the last two and a half seconds, with an original lo-fi tune under it (clip-music.js; it can be turned off). |
 | `ui/tips.js` | 115 | The first visit: a short tour of what you can click. |
-| `ui/side-fold.js` | 28 | Folds the side columns away to a narrow strip with one click on the arrow at their inner edge (wide screens; remembered). |
 | `ui/topbar.js` | 217 | Phone modal, notifications, the night switch. |
+| `ui/update.js` | 46 | This office keeping itself up to date (server/updater.mjs; the live stream's {k:'update'}): a bar over the stage while a newer version is waiting or being installed, a note after it was, and what to do when it can't update on its own while the team requires a newer version. |
 | `ui/whiteboard.js` | 285 | The whiteboard: agents' tasks and your own sticky notes. |
 | `ui/wrapped.js` | 107 | The week in review: a 1080 × 1350 picture card (the office as it looks right now, then the week's numbers) to save as a PNG or copy, for sharing. |
 | `world/backdrops/beach.js` | 117 | Beach backdrop: sand, surf, palms, umbrellas and loungers. |
@@ -210,7 +213,7 @@ engine switches to demo mode and talks to no API.
 | `world/backdrops/street-wedding.js` | 254 | … |
 | `world/backdrops/street-wires.js` | 76 | … |
 | `world/cozy-room.js` | 54 | The cozy plan's room: floor and walls. |
-| `world/desks.js` | 183 | Desks and office chairs, and each person's coat and backpack at their desk. |
+| `world/desks.js` | 191 | Desks and office chairs, and each person's coat and backpack at their desk. |
 | `world/entrance.js` | 113 | The cozy plan's door and the company floor's lift. |
 | `world/furniture/board.js` | 25 | The whiteboard's frame (its drawing lives in ui/whiteboard.js). |
 | `world/furniture/coffee.js` | 33 | The coffee corner (the pantry counter on the company floor). |
@@ -223,7 +226,7 @@ engine switches to demo mode and talks to no API.
 | `world/models.js` | 77 | 3D models of your own in the office: glTF / GLB files (made with an image-to-3D model such as NVIDIA's on Hugging Face, TRELLIS, Hunyuan3D, or bought, or from Blender) dropped into public/assets/models/ and listed in public/assets/models/manifest.json. |
 | `world/pro/floor.js` | 341 | The company floor: rooms, partitions and furniture. |
 | `world/pro/pieces.js` | 142 | Company floor building pieces: floor finishes, walls, glass, chairs, dining sets. |
-| `world/pro/wing.js` | 143 | Headquarters' wing: in front of the company floor, a corridor along it, a corridor down the middle and four department rooms of two pods each (the desks, pods' screens and carpets come from the shared code). |
+| `world/pro/wing.js` | 154 | Headquarters' wing: in front of the company floor, a corridor along it, a corridor down the middle and four department rooms of two pods each (the desks, pods' screens and carpets come from the shared code). |
 | `world/props/aquarium.js` | 44 | The aquarium. |
 | `world/props/arcade.js` | 62 | The arcade cabinet and its little game. |
 | `world/props/billiards.js` | 124 | The pool table (company floor), on the lounge's right side between the sofa and the arcade: a 7-foot table (green cloth with its spots, cushions, walnut rails inlaid with pearl diamonds, six leather pockets, turned legs), a rug under it, chalk on the rail, and a round cue stand by the arcade. |
@@ -243,8 +246,8 @@ engine switches to demo mode and talks to no API.
 | `world/props/update.js` | 42 | Per-frame updates for the props. |
 | `world/props/vacuum.js` | 33 | The robot vacuum. |
 | `world/room-update.js` | 176 | Room lights, particles, the rocket, the clock and day / night. |
-| `world/screens.js` | 100 | What each desk's screens show: the editor while it edits, a terminal for commands, a browser for the web, code with the match highlighted while it reads or searches, a chat while it thinks, a permission dialog while it waits for you, a screensaver while it naps. |
-| `world/team-tower.js` | 524 | Team mode's building in 3D (headquarters plan only; docs/features/team-mode.md): every other member's room on a floor above the wing, four to a floor (src/shared/team-floors.js), the team's lift at the back. |
-| `world/tower-floor.js` | 365 | A team floor in full, the one you are on: the wing's desks, plaques, boards and plants, a break corner per room, in one of three looks (studio, garden, library); things to click that react on your screen only. |
+| `world/screens.js` | 102 | What each desk's screens show: the editor while it edits, a terminal for commands, a browser for the web, code with the match highlighted while it reads or searches, a chat while it thinks, a permission dialog while it waits for you, a screensaver while it naps. |
+| `world/team-tower.js` | 722 | Team mode's building in 3D (headquarters plan only; docs/features/team-mode.md): every other member's room on a floor above the wing, four to a floor (src/shared/team-floors.js), the team's lift at the back. |
 | `world/terrace.js` | 114 | The terrace around the office: tiles, glass railing, bollards, planters, potted plants, seating. |
+| `world/tower-floor.js` | 392 | A team floor in full (team mode, headquarters plan; docs/features/team-mode.md). |
 | `world/windows.js` | 96 | Windows on the outer walls and the views they show. |

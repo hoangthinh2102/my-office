@@ -150,29 +150,53 @@ async function setup() {
   console.log(`  ${tr('cli.setup.later')}\n`);
 }
 
-/* ---------- bringing a clone up to date: pull, install packages if they changed, build, restart ---------- */
+/* ---------- bringing a clone up to date: pull, install packages if they changed, build, restart ----------
+   --auto: the office runs it on its own (server/updater.mjs) when there is a newer version or the team requires one.
+   Then only main is pulled, the outcome is kept in data/update.json for the office to show after its restart, and a
+   build that fails goes back to the version that was running. OFFICE_RESTART_CMD replaces the service restart (tests). */
+const UPDATE_FILE = path.join(DATA_DIR, 'update.json');
+const noteUpdate = (o) => { try { const was = JSON.parse(fs.readFileSync(UPDATE_FILE, 'utf8')); fs.writeFileSync(UPDATE_FILE, JSON.stringify({ ...was, ...o }, null, 2)); } catch { /* not started by the office */ } };
 async function update() {
-  console.log(`${tr('cli.update.title')}\n`);
-  if (!git('rev-parse', 'HEAD')) { bad(tr('cli.update.notClone')); process.exitCode = 1; return; }
-  if (git('status', '--porcelain', '--untracked-files=no')) { bad(tr('cli.update.changed', { dir: ROOT })); process.exitCode = 1; return; }
+  const auto = args.includes('--auto');
+  console.log(`${tr('cli.update.title')}${auto ? ` (${new Date().toISOString()})` : ''}\n`);
+  const fail = (key, why) => { bad(tr(key, { dir: ROOT })); if (auto) noteUpdate({ status: 'failed', why, at: Date.now() }); process.exitCode = 1; };
+  if (!git('rev-parse', 'HEAD')) { fail('cli.update.notClone', 'no-git'); return; }
+  if (git('status', '--porcelain', '--untracked-files=no')) { fail('cli.update.changed', 'changes'); return; }
+  if (auto && git('rev-parse', '--abbrev-ref', 'HEAD') !== 'main') { fail('cli.update.notMain', 'branch'); return; }
   const before = git('rev-parse', 'HEAD');
-  try { execFileSync('git', ['-C', ROOT, 'pull', '--ff-only', '--quiet'], { stdio: ['ignore', 'inherit', 'inherit'] }); } catch { bad(tr('cli.update.pullFailed')); process.exitCode = 1; return; }
+  try { execFileSync('git', ['-C', ROOT, 'pull', '--ff-only', '--quiet', ...(auto ? ['origin', 'main'] : [])], { stdio: ['ignore', 'inherit', 'inherit'] }); } catch { fail('cli.update.pullFailed', 'pull'); return; }
   const after = git('rev-parse', 'HEAD');
-  if (before === after && builtFrom() === after && !args.includes('--force')) { ok(tr('cli.update.latest', { commit: after.slice(0, 7) })); return; }
+  if (before === after && builtFrom() === after && !args.includes('--force')) { ok(tr('cli.update.latest', { commit: after.slice(0, 7) })); if (auto) noteUpdate({ status: 'failed', why: 'same', at: Date.now() }); return; }
+  const lockChanged = (a, b) => a !== b && git('diff', '--name-only', a, b).split('\n').includes('package-lock.json');
+  const packages = () => execSync('npm ci --no-audit --no-fund --loglevel=error', { cwd: ROOT, stdio: 'inherit' });
   if (before !== after) {
     ok(tr('cli.update.pulled', { from: before.slice(0, 7), to: after.slice(0, 7) }));
     for (const line of git('log', '--format=%s', `${before}..${after}`).split('\n').filter(Boolean).slice(0, 8)) console.log(`      · ${line}`);
-    if (git('diff', '--name-only', before, after).split('\n').includes('package-lock.json')) {
-      console.log(tr('cli.update.packages'));
-      execSync('npm ci --no-audit --no-fund --loglevel=error', { cwd: ROOT, stdio: 'inherit' });
-    }
   }
-  ensureBuild(true);
+  let failed = null;
+  try {
+    if (lockChanged(before, after)) { console.log(tr('cli.update.packages')); packages(); }
+    ensureBuild(true);
+  } catch (e) { failed = e; }
+  if (failed && before !== after) {
+    // the new version doesn't build: back to the one that was running, so the office keeps working
+    bad(tr('cli.update.buildFailed', { commit: before.slice(0, 7) }));
+    try {
+      execFileSync('git', ['-C', ROOT, 'reset', '--hard', '--quiet', before], { stdio: 'inherit' });
+      if (lockChanged(after, before)) packages();
+      ensureBuild(true);
+      ok(tr('cli.update.rolledBack', { commit: before.slice(0, 7) }));
+    } catch { bad(tr('cli.update.rollbackFailed')); }
+    if (auto) noteUpdate({ status: 'failed', why: 'build', at: Date.now() });
+    process.exitCode = 1;
+  } else if (failed) { if (auto) noteUpdate({ status: 'failed', why: 'build', at: Date.now() }); throw failed; }
   const svc = service();
   let mine = false; try { mine = fs.readFileSync(svc.file, 'utf8').includes(ROOT); } catch { /* none */ }
-  if (mine && (await svc.state()) !== 'missing') {   // (only the service that runs this folder: another clone's is left alone)
-    try { execSync(svc.restart, { stdio: 'ignore' }); } catch { /* reported below */ }
-    (await waitUp()) ? ok(tr('cli.update.restarted', { port: PORT })) : warn(tr('cli.update.notUp', { cmd: svc.restart }));
+  const restart = process.env.OFFICE_RESTART_CMD || (mine && (await svc.state()) !== 'missing' ? svc.restart : '');
+  if (restart) {   // (only the service that runs this folder: another clone's is left alone)
+    if (auto && !failed) noteUpdate({ restartAt: Date.now() });
+    try { execSync(restart, { stdio: 'ignore' }); } catch { /* reported below */ }
+    (await waitUp()) ? ok(tr('cli.update.restarted', { port: PORT })) : warn(tr('cli.update.notUp', { cmd: restart }));
   } else ok(tr('cli.update.noService'));
   console.log(`\n${tr('cli.update.done')}\n`);
 }
@@ -273,7 +297,7 @@ function start() {
 /* ---------- team mode (docs/features/team-mode.md) ----------
    my-office team create --hub <url> --name <team> [--me <your name>] [--token <hub's create token>]
    my-office team invite | join <invite link> [--me <name>] | status | rename <new name> | leave [--local] | restore <recovery key>
-   my-office team room open|closed | pause | resume | rooms | policy details on|off
+   my-office team room open|closed | room log on|off | pause | resume | rooms | policy details on|off | update
    my-office team grants | revoke <name> | code | redeem <code>   (closed rooms: who may look in, view codes)
    my-office team admin add <name> | admin stepdown | remove <name>   (admins) */
 async function team() {
@@ -310,6 +334,11 @@ async function team() {
       console.log(`  ${tr(r.policy?.details ? 'cli.team.policyIsOn' : 'cli.team.policyIsOff')}${r.me.owner ? ` ${tr('cli.team.youAdmin')}` : ''}`);
       console.log(`  ${tr('cli.team.members', { n: r.members.length })}`);
       for (const m of r.members) console.log(`    · ${m.name}${[m.role === 'admin' && tr('cli.team.admin'), m.id === r.me.id && tr('cli.team.itsYou')].filter(Boolean).map((x) => ` (${x})`).join('')}`);
+    } else if (sub === 'room' && arg === 'log') {   // others may read your sessions' conversations (or not)
+      const on = args[3];
+      if (!['on', 'off'].includes(on)) { console.log(tr('cli.team.usage')); process.exitCode = 1; return; }
+      await client.setRoomLog(on === 'on');
+      ok(tr(on === 'on' ? 'cli.team.logOn' : 'cli.team.logOff'));
     } else if (sub === 'room') {
       if (!['open', 'closed'].includes(arg)) { console.log(tr('cli.team.usage')); process.exitCode = 1; return; }
       await client.setRoom(arg);
@@ -322,6 +351,15 @@ async function team() {
       if (arg !== 'details' || !['on', 'off'].includes(on)) { console.log(tr('cli.team.usage')); process.exitCode = 1; return; }
       const p = await client.setPolicy({ details: on === 'on' });
       ok(tr(p.details ? 'cli.team.policyOn' : 'cli.team.policyOff'));
+    } else if (sub === 'update') {
+      // (admins) every office in the team must run the newest main: older ones update themselves, the hub holds them
+      // back until they have (server/updater.mjs). The version is main's commit count on this clone's remote.
+      try { execFileSync('git', ['-C', ROOT, 'fetch', '--quiet', 'origin', 'main'], { stdio: 'ignore', timeout: 90_000 }); } catch { bad(tr('cli.team.updateFetch')); process.exitCode = 1; return; }
+      const build = Number(git('rev-list', '--count', 'origin/main')) || 0, at = git('rev-parse', '--short', 'origin/main');
+      if (!build) { bad(tr('cli.team.updateFetch')); process.exitCode = 1; return; }
+      const v = await client.requireUpdate(build);
+      ok(tr('cli.team.updateSet', { n: v.min, commit: at }));
+      console.log(`  ${tr('cli.team.updateNote')}`);
     } else if (sub === 'rooms') {
       let st;
       try { st = await (await fetch(`http://127.0.0.1:${PORT}/api/team`)).json(); } catch { bad(tr('cli.doctor.serverDown', { port: PORT })); process.exitCode = 1; return; }

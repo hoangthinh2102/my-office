@@ -12,6 +12,7 @@ import { syncLift } from './team-lift.js';
 import { setApply as setJoinApply, syncJoin } from './team-join.js';
 import { fillMembers, setApply as setMembersApply } from './team-members.js';
 import { goTower } from '../world/team-tower.js';
+import { updateState } from './update.js';
 import { t as tr } from '../../i18n/index.js';
 
 let modal, demoSet = null;
@@ -22,7 +23,13 @@ const team = () => state.team || null;
 export function onTeam(t) {
   state.team = t || null;
   const btn = $('btn-team');
-  if (btn) btn.hidden = !t?.inTeam;
+  if (btn) {
+    btn.hidden = !t?.inTeam;
+    // while your sessions' conversations can be read, the building button says so (and so does its title)
+    const log = !!t?.inTeam && t.room?.log === true && !t.room?.paused;
+    btn.classList.toggle('is-log', log);
+    btn.title = log ? `${tr('team.openTitle')} · ${tr('team.log.onTitle')}` : tr('team.openTitle');
+  }
   if (!t?.inTeam && isOpen()) close();
   if (isOpen()) render();
   noticeKnocks(state.team);   // (a knock on your door: a toast, and a badge on the building button)
@@ -39,6 +46,25 @@ function close() { modal.hidden = true; $('btn-team')?.setAttribute('aria-presse
 async function setDetails(on) {
   if (demoSet) { demoSet({ details: on }); return; }
   try { onTeam((await post('/api/team/policy', { details: on })).team); } catch (e) { toast(tr('team.policy.failed', { why: e.message })); render(); }
+}
+
+// your own sessions' conversations: may people who see your room read them? (this computer only; off unless turned on)
+async function setLog(on) {
+  if (demoSet) { demoSet({ log: on }); return; }
+  try { onTeam((await post('/api/team/room', { log: on })).team); } catch (e) { toast(tr('team.log.failed', { why: e.message })); render(); }
+}
+
+// (admins) every office in the team must run the newest main: a second click does it
+let updArmed = 0;
+async function requireUpdate() {
+  if (Date.now() - updArmed > 4000) { updArmed = Date.now(); $('team-upd-l').textContent = tr('team.upd.confirm'); setTimeout(() => { if (Date.now() - updArmed >= 4000) render(); }, 4100); return; }
+  updArmed = 0;
+  if (demoSet) { toast(tr('team.upd.demo')); render(); return; }
+  try {
+    const j = await post('/api/team/update', {});
+    toast(tr('team.upd.done', { n: j.version?.min, commit: j.commit || '' }), 6000);
+  } catch (e) { const k = `team.upd.err.${e.message}`; toast(tr('team.upd.failed', { why: tr(k) === k ? e.message : tr(k) })); }
+  render();
 }
 
 async function setMine(mode) {
@@ -60,7 +86,7 @@ const counts = (c = {}) => tr('team.counts', { work: c.work || 0, wait: c.wait |
 function render() {
   const t = team(); if (!t?.inTeam) return;
   $('team-title').textContent = tr('team.title', { team: t.team?.name || '' });
-  $('team-sub').textContent = t.room?.paused ? tr('team.sub.paused') : t.connected ? tr('team.sub.on', { n: t.rooms.length }) : t.problem === 'not-member' ? tr('team.sub.removed') : tr('team.sub.off');
+  $('team-sub').textContent = t.room?.paused ? tr('team.sub.paused') : t.problem === 'update' ? (['waiting', 'running'].includes(updateState()?.status) ? tr('team.upd.held') : tr('team.upd.heldStuck', { min: updateState()?.min || 1 })) : t.connected ? tr('team.sub.on', { n: t.rooms.length }) : t.problem === 'not-member' ? tr('team.sub.removed') : tr('team.sub.off');
   // your room
   const mine = t.room?.paused ? 'paused' : t.room?.mode === 'open' ? 'open' : 'closed', local = !!state.isLocal || !!demoSet;
   for (const b of modal.querySelectorAll('.team-seg-b')) {
@@ -74,6 +100,15 @@ function render() {
   $('team-policy-t').textContent = `${tr(details ? 'team.policy.on' : 'team.policy.off')} ${owner ? tr('team.policy.youOwn') : tr('team.policy.byOwner')}`;
   $('team-policy-sw').hidden = !owner;
   const sw = $('team-policy-in'); sw.checked = details; sw.disabled = !local;
+  const log = t.room?.log === true, lsw = $('team-convo-in');
+  if (lsw) { lsw.checked = log; lsw.disabled = !local; }
+  if ($('team-convo-t')) $('team-convo-t').textContent = `${tr(log ? 'team.log.on' : 'team.log.off')}${local ? '' : ` ${tr('team.mine.phone')}`}`;
+  $('team-convo')?.classList.toggle('is-on', log);
+  // the oldest version the team allows: everyone sees it; admins raise it to the newest (on this computer)
+  const u = updateState(), build = u?.build || 0, min = u?.min || 0;
+  const heldText = () => (['waiting', 'running'].includes(u?.status) || !u ? tr('team.upd.held') : tr('team.upd.heldStuck', { min: Math.max(min, 1) }));
+  if ($('team-upd-t')) $('team-upd-t').textContent = u?.held ? heldText() : min > 0 ? tr('team.upd.min', { min, build }) : tr('team.upd.none', { build: build || '–' });
+  if ($('team-upd-b')) { $('team-upd-b').hidden = !owner || !local; if (!updArmed) $('team-upd-l').textContent = tr('team.upd.button'); }
   $('team-mine').querySelector('.team-owner')?.remove();
   if (owner) $('team-mine').querySelector('.team-mine-head b').append(el('span', 'team-owner', tr('team.owner')));
   fillAccess(t);
@@ -150,6 +185,8 @@ export function setup() {
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && isOpen()) close(); });
   for (const b of modal.querySelectorAll('.team-seg-b')) b.addEventListener('click', () => { if (!b.classList.contains('is-sel')) setMine(b.dataset.mode); });
   $('team-policy-in')?.addEventListener('change', (e) => setDetails(e.target.checked));
+  $('team-convo-in')?.addEventListener('change', (e) => setLog(e.target.checked));
+  $('team-upd-b')?.addEventListener('click', requireUpdate);
   setApply(onTeam); setJoinApply(onTeam); setMembersApply(onTeam);
   // "N min ago" stays true while the building is open
   setInterval(() => { if (isOpen()) render(); }, 30_000);

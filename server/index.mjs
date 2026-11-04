@@ -37,6 +37,8 @@ import { createPerf } from './perf.mjs';
 import { pickLang, createT } from '../src/i18n/index.js';
 import { createRelay } from './team/relay.mjs';
 import { createTeamClient } from './team/client.mjs';
+import { createUpdater } from './updater.mjs';
+import { serviceFor } from '../bin/service.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.OFFICE_PORT) || 4310;
@@ -295,7 +297,18 @@ const pub = (s) => ({ id: s.id, sid: rootOf(s.sid) || null, pid: s.pid, name: s.
   git: gitOf(s),
   usage: s.usage?.model ? { cost: Math.round(s.usage.cost * 100) / 100, ...liveCtx(s), model: s.usage.model, out: s.usage.out } : null });
 // Team mode (docs/features/team-mode.md): only while this computer is in a team; what leaves it is cut down in roomView
-const team = createRelay({ dataDir: DATA_DIR, sessions: () => [...sessions.values()].map(pub), redact, log: (line) => console.log(line), onChange: (t) => broadcast({ k: 'team', team: t }) });
+// keeping this office up to date on its own (server/updater.mjs): from its own git remote, when there is a newer version
+// or the team requires one, once no approval is waiting; only an install run by its own service
+const updater = createUpdater({ root: ROOT, dataDir: DATA_DIR, distDir: process.env.OFFICE_DIST_DIR || '.next', log: (line) => console.log(line),
+  busy: () => pending.size > 0,
+  canRestart: () => {
+    if (process.env.OFFICE_RESTART_CMD) return true;
+    try { return fs.readFileSync(serviceFor({ root: ROOT, server: path.join(ROOT, 'server', 'index.mjs'), log: '', host: HOST, port: PORT }).file, 'utf8').includes(ROOT); } catch { return false; }
+  },
+  onChange: (u) => broadcast({ k: 'update', update: u }) });
+const team = createRelay({ build: () => updater.build, onVersion: (min, held) => updater.require(min, held), dataDir: DATA_DIR, sessions: () => [...sessions.values()].map(pub), redact, log: (line) => console.log(line), onChange: (t) => broadcast({ k: 'team', team: t }),
+  // (a teammate reads one of this room's sessions' conversation, when this room's owner allows it: team.json room.log)
+  readLog: async (id) => { const s = [...sessions.values()].find((x) => x.id === id); return s ? readLog(s, 60) : []; } });
 const teamClient = createTeamClient({ dataDir: DATA_DIR });
 function gitOf(s) { const r = s.cwd && git.repoOf(s.cwd); return r ? { repo: r.name, branch: r.branch, dirty: r.dirty, ahead: r.ahead, ci: r.ci, ciName: r.ciName, ciUrl: r.ciUrl, born: r.born || null } : null; }
 // context: exact from the status line while it reports (last 15 min), else estimated from the transcript
@@ -2516,6 +2529,7 @@ const server = http.createServer((req, res) => {
       try {
         if (b?.mode) await teamClient.setRoom(b.mode);
         else if (typeof b?.paused === 'boolean') await teamClient.setPaused(b.paused);
+        else if (typeof b?.log === 'boolean') await teamClient.setRoomLog(b.log);   // (others may read this room's sessions' conversations)
         else { json(res, 400, { ok: false, message: tr('server.badRequest') }); return; }
       } catch (e) { json(res, 400, { ok: false, code: e.code || 'error' }); return; }
       team.reload();
@@ -2529,6 +2543,15 @@ const server = http.createServer((req, res) => {
       if (typeof b?.details !== 'boolean') { json(res, 400, { ok: false, message: tr('server.badRequest') }); return; }
       try { team.setPolicy(await teamClient.setPolicy({ details: b.details })); } catch (e) { json(res, 400, { ok: false, code: e.code || 'error' }); return; }
       json(res, 200, { ok: true, team: team.state() });
+    }).catch(() => json(res, 400, { ok: false, message: tr('server.badRequest') }));
+    return;
+  }
+  if (req.method === 'POST' && url.pathname === '/api/team/update') {   // team mode: (admins; the hub checks) every office must run the newest main
+    if (!isLoopback(req) || !sameOriginOf(req) || !String(req.headers['content-type'] || '').startsWith('application/json')) { json(res, 403, { ok: false, message: tr('server.forbidden') }); return; }
+    readJson(req).then(async () => {
+      const n = await updater.newest();
+      if (!n) { json(res, 400, { ok: false, code: 'no-remote' }); return; }
+      try { const v = await teamClient.requireUpdate(n.build); json(res, 200, { ok: true, version: v, commit: n.commit.slice(0, 7) }); } catch (e) { json(res, 400, { ok: false, code: e.code || 'error' }); }
     }).catch(() => json(res, 400, { ok: false, message: tr('server.badRequest') }));
     return;
   }
@@ -2676,7 +2699,7 @@ const server = http.createServer((req, res) => {
     const lanOn = lanIsOn();
     return { k: 'snap', lang: prefs.lang(), sessions: [...sessions.values()].map(pub), perms: [...pending.values()].map(permPub), feed, stats, local, todos, limits: limitsOut(), limitsNote: noteText(), trophies: trophies.pub(),
       lan: local && lanOn ? lanUrl() : null, lanBase: local && lanOn ? lanUrl(false) : null, pin: local ? currentPin() : null,
-      ts: local && lanOn ? tsUrl() : null, tsHere: !!tsUrl(), phoneApprove: !!prefs.get('phoneApprove'), phoneTasks: !!prefs.get('phoneTasks'), lanFixed: local && lanFixed, build: BUILD, schedule: company.get().schedule, team: team.state() };
+      ts: local && lanOn ? tsUrl() : null, tsHere: !!tsUrl(), phoneApprove: !!prefs.get('phoneApprove'), phoneTasks: !!prefs.get('phoneTasks'), lanFixed: local && lanFixed, build: BUILD, schedule: company.get().schedule, team: team.state(), update: updater.state() };
   };
   if (url.pathname === '/stream') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
@@ -2708,6 +2731,11 @@ const server = http.createServer((req, res) => {
     if (sent > since) { answer(); return; }
     timer = setTimeout(answer, 25_000); waiting.add(answer);
     req.on('close', () => { waiting.delete(answer); clearTimeout(timer); });
+    return;
+  }
+  if (req.method === 'GET' && url.pathname === '/api/team/log') {   // team mode: one session's conversation in someone else's room, when they allow it (this computer only)
+    if (!isLoopback(req)) { json(res, 403, { ok: false, error: 'local only' }); return; }
+    team.requestLog(url.searchParams.get('room'), url.searchParams.get('p')).then((r) => json(res, 200, r)).catch(() => json(res, 200, { ok: false, error: 'gone' }));
     return;
   }
   if (url.pathname === '/api/team') {   // team mode: this computer's room and everyone else's, as the hub sent them (this computer only)
@@ -2949,6 +2977,6 @@ server.listen(PORT, HOST, () => {
   scanCleanups().catch(() => {});   // macOS paths; elsewhere there may be nothing to scan
   trackOwners();
   startTrend();
-  team.start();
+  updater.start().catch(() => {}).finally(() => team.start());   // (the relay tells the hub this office's version)
   console.log(tr('server.console.listening', { port: PORT, phone: HOST === '127.0.0.1' ? tr('server.console.lanOff') : lanUrl(false) || tr('server.console.noLan') }));
 });

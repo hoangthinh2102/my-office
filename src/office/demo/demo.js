@@ -2,6 +2,7 @@
 import { state } from '../core/state.js';
 import { onDirectorMsg } from '../ui/director.js';
 import { onTeam } from '../ui/team.js';
+import { onUpdate } from '../ui/update.js';
 import { startDemoTeam } from './demo-team.js';
 import { setSchedule } from '../core/schedule.js';
 import { $, STATIC, rand, replay } from '../core/env.js';
@@ -211,6 +212,7 @@ export function applyMsg(d, quiet = false) {
     }
     if (d.schedule) setSchedule(d.schedule);   // (the director's office hours, core/schedule.js)
     if ('team' in d && !quiet) onTeam(d.team);
+    if ('update' in d && !quiet) onUpdate(d.update);   // (this office updating itself, ui/update.js)
     state.connectedOnce = true; queueUi();
   } else if (d.k === 'sess') { upsertSession(d.s, !quiet); if (d.stats) state.stats = d.stats; }
   else if (d.k === 'gone') { if (!quiet) chatLeft(sessions.get(d.id)); (quiet ? dropSessionNow : removeSession)(d.id); }
@@ -233,7 +235,8 @@ export function applyMsg(d, quiet = false) {
   else if (d.k === 'trophies') setTrophies(d.t, quiet ? [] : d.earned || []);
   else if (d.k === 'vi') relabel(d.from, d.to);
   else if (d.k === 'dm' || d.k === 'company' || d.k === 'perf') onDirectorMsg(d);   // (the director's office: ui/director.js)
-  else if (d.k === 'team') { if (!quiet) onTeam(d.team); }   // (team mode: the building, ui/team.js)
+  else if (d.k === 'team') { if (!quiet) onTeam(d.team); }
+  else if (d.k === 'update') { if (!quiet) onUpdate(d.update); }   // (this office updating itself, ui/update.js)   // (team mode: the building, ui/team.js)
 }
 // a translation that arrived after its event: swap the words in bubbles, the feed and the session list
 function relabel(from, to) {

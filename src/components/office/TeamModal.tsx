@@ -33,6 +33,19 @@ export default async function TeamModal() {
                 <span>{t('team.policy.switch')}</span>
               </label>
             </div>
+            {/* your sessions' conversations: may people who see your room read them? (off unless you turn it on) */}
+            <div className="team-policy team-convo" id="team-convo">
+              <label className="team-switch">
+                <input type="checkbox" id="team-convo-in" />
+                <span>{t('team.log.switch')}</span>
+              </label>
+              <span className="team-policy-t" id="team-convo-t"></span>
+            </div>
+            {/* the oldest office version the team allows (admins raise it; src/office/ui/team.js, server/updater.mjs) */}
+            <div className="team-policy team-upd" id="team-upd">
+              <span className="team-policy-t" id="team-upd-t"></span>
+              <button type="button" className="team-code-make" id="team-upd-b" hidden><span data-icon="rocket"></span><span id="team-upd-l">{t('team.upd.button')}</span></button>
+            </div>
             {/* invite someone (admins; src/office/ui/team-join.js) */}
             <div className="team-invite" id="team-invite">
               <button type="button" className="team-code-make" id="team-invite-make" hidden><span data-icon="users"></span>{t('team.join.invite')}</button>

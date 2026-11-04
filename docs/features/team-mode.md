@@ -57,6 +57,43 @@ Tối đa 5 lần mỗi 10 phút. Mọi người đang online thấy tên mới 
 tầng trong toà nhà 3D, danh sách gõ cửa / được xem. Trên trang: nút **Đổi tên** ở dòng của bạn trong **Thành viên**.
 Lệnh: `team rename <tên mới>`. Hub cũ hơn 0.5.0 thì báo cần cập nhật hub (`hub-old`).
 
+**Xem chi tiết phòng người khác** (hub **0.6.0**):
+
+- **Hub giữ 50 sự kiện gần nhất của mỗi phòng**, chỉ trong bộ nhớ (không vào SQLite), và gửi kèm trong `hello` cho
+  người được xem phòng đó. Mở trang sau khi người kia đã làm một lúc vẫn thấy hoạt động gần đây. Phòng đóng lại (không
+  ai được xem), người đó rời team, hay team tắt `details` (sự kiện cũ có nhãn) thì xoá.
+- **Cột Hoạt động của phòng người khác giống của bạn**: gộp các việc liền nhau của một phiên thành một thẻ, có lọc theo
+  loại (lệnh / sửa file / đọc / web / trợ lý). Bấm một phiên ở cột trái thì cột phải chỉ còn hoạt động của phiên đó
+  (nút "Chỉ …" để xem lại tất cả).
+- **Đọc hội thoại của một phiên** (prompt, câu trả lời của Claude, các bước; không có diff). **Mặc định tắt**. Chỉ chủ
+  phòng bật được, trên máy của mình: công tắc **Cho xem hội thoại của các phiên** trong Toà nhà, hoặc
+  `team room log on|off`. Khi đang bật, nút Toà nhà có chấm xanh. Chỉ ai đang xem được phòng (phòng mở, hoặc phòng đóng
+  đã cho xem) mới hỏi được. Đường đi: người xem → hub → máy chủ phòng; máy chủ phòng đọc 60 mục gần nhất, che bí mật,
+  cắt mỗi đoạn còn 1500 ký tự (cả gói tối đa ~190 KB), gửi lại **chỉ cho người hỏi**; hub không giữ gì. Mỗi người hỏi
+  tối đa 3 giây một lần mỗi phòng; 8 giây không có trả lời thì báo "Không lấy được". Nhật ký ra vào của chủ phòng ghi
+  "X xem hội thoại các phiên", tối đa một dòng mỗi 10 phút mỗi người. Trên trang: nút **Xem hội thoại** dưới từng
+  phiên ở cột trái, mở ngăn chỉ đọc, tự làm mới mỗi 10 giây. Văn phòng bản cũ không có nút này.
+
+**Bắt buộc cập nhật** (hub **0.6.0**, `server/updater.mjs`):
+
+- **Số bản** = số commit trên `main` ở commit đã build ra trang (`.next/office-commit`), ví dụ `#412`. Office báo số này
+  cho hub khi kết nối (`?b=` trên WebSocket, không ký: mỗi office chỉ nói về chính nó).
+- **Tự kiểm tra**: lúc chạy được 1 phút rồi 15 phút một lần, `git fetch origin main` (repo đã cài từ đó; hub không bao giờ
+  gửi code). Có bản mới hơn thì tự cập nhật.
+- **Admin ép cả team**: `my-office team update` hoặc nút **Bắt mọi người cập nhật** trong Toà nhà (bấm 2 lần). Hub lưu
+  mức tối thiểu (`meta.min_build`) = số bản của `origin/main` và báo ngay (`{t:'update', min}`). Office thấp hơn bị **giữ
+  lại**: không nhận phòng nào, phòng của nó hiện offline với mọi người, mọi tin nó gửi bị bỏ qua, tới khi kết nối lại với
+  số bản đủ mới. Office bản cũ (chưa có cơ chế này) không báo số bản nên cũng bị giữ: cần tự chạy `my-office update` một lần.
+- **Tự cập nhật** (`my-office update --auto`, chạy ở process group riêng): chờ hết yêu cầu duyệt / câu hỏi đang treo
+  (tối đa 10 phút), pull `origin main`, `npm ci` nếu `package-lock.json` đổi, build, restart service. Build lỗi thì
+  `git reset --hard` về bản đang chạy, build lại, restart: văn phòng vẫn chạy như cũ; bản lỗi đó không thử lại trong 1 giờ.
+  Kết quả ghi ở `data/update.json` (trang đọc sau khi restart), log ở `data/update.log`.
+- **Chỉ tự cập nhật bản cài thường**: thư mục ở nhánh `main`, không có thay đổi riêng, `main` fast-forward được lên
+  `origin/main`, và chạy bằng service của chính thư mục đó. Máy dev (nhánh khác, sửa dở) không bị đụng: chỉ hiện thanh
+  báo khi team yêu cầu bản mới hơn. `OFFICE_AUTO_UPDATE=0` tắt hẳn; `OFFICE_RESTART_CMD` thay lệnh restart (cho test).
+- Trên trang: thanh báo trên sân khấu (`src/office/ui/update.js`): có bản mới đang chờ duyệt xong, đang cập nhật, cập nhật
+  lỗi, bị team giữ lại vì không tự cập nhật được; sau khi xong là một thông báo "Đã cập nhật lên bản #n" và trang tự tải lại.
+
 Lộ trình ở cuối file.
 
 ## Cách sử dụng
@@ -73,6 +110,8 @@ Lộ trình ở cuối file.
 | `team leave [--local]` | Rời team trên hub rồi xoá khoá khỏi máy. `--local`: xoá trên máy kể cả khi không kết nối được hub. |
 | `team restore <khoá khôi phục>` | Làm lại đúng thành viên đó trên máy này (máy mới, cài lại máy). |
 | `team room open\|closed` | Mở phòng (mọi thành viên xem được, chỉ xem) hoặc đóng lại. Có hiệu lực ngay, không cần khởi động lại. |
+| `team update` | (admin, hub 0.6.0) Cả team phải chạy bản mới nhất trên `main`: office cũ hơn tự cập nhật, tới lúc đó hub giữ lại. |
+| `team room log on\|off` | Cho người xem được phòng bạn đọc hội thoại gần đây của các phiên (đã che bí mật), hoặc thôi. Mặc định tắt. Hub 0.6.0. |
 | `team pause` / `team resume` | Ngừng gửi mọi thứ lên hub (phòng hiện offline) / bật lại. |
 | `team rooms` | Các phòng đang thấy (đọc từ văn phòng đang chạy, `GET /api/team`). |
 | `team admin add <tên>` | (admin) Cho một thành viên làm admin. Bấm nhầm thì chỉ người đó tự thôi được. |
@@ -134,9 +173,11 @@ Chỉ ở kiểu văn phòng **Tập đoàn** (`hq`); các kiểu khác chỉ c�
   phòng đóng: chỉ tên chủ phòng và số người. Không có nút giao việc, duyệt hay nhắn.
 - **Hai cột bên theo phòng đang xem** (`src/office/ui/team-side.js`, markup `#team-rail` / `#team-feed`): bấm vào một
   phòng hay một người ở tầng đang xem thì cột trái thành "Phòng của …" (đếm làm / chờ / nghỉ, từng phiên: project, vai
-  trò, đang làm gì, số subagent) và cột phải thành "Hoạt động · …" (các sự kiện gần nhất của phòng, mới nhất trên cùng).
-  Chỉ những gì hub đã gửi: nhãn việc chỉ có khi team bật chi tiết; phòng đóng chỉ có số người và nút gõ cửa. Nút
-  "Của bạn" ở đầu mỗi cột, đổi tầng hay về tầng của bạn thì hai cột trở lại như cũ. Không cần sửa hub.
+  trò, đang làm gì, số subagent) và cột phải thành "Hoạt động · …" (các sự kiện gần nhất của phòng, gộp theo phiên
+  như cột của bạn, có lọc theo loại; bấm một phiên bên trái thì chỉ còn hoạt động của phiên đó). Chỉ những gì hub đã
+  gửi: nhãn việc chỉ có khi team bật chi tiết; phòng đóng chỉ có số người và nút gõ cửa. Phòng cho xem hội thoại
+  (`room.log`) có nút **Xem hội thoại** dưới mỗi phiên (`src/office/ui/team-log.js`, markup `TeamLogDrawer.tsx`). Nút
+  "Của bạn" ở đầu mỗi cột, đổi tầng hay về tầng của bạn thì hai cột trở lại như cũ (và ngăn hội thoại đóng lại).
 - **Tầng đang xem có đồ đầy đủ** (`src/office/world/tower-floor.js`), như cánh phòng ban của bạn: bàn thật (laptop,
   màn hình phụ, tủ, ghế xoay, đèn bàn, đồ lặt vặt), màn hình hiện đúng việc người ngồi đó đang làm (code, terminal,
   web, chờ duyệt, màn hình chờ khi nghỉ), biển tên ở cửa phòng (tên người, trạng thái phòng), bảng sprint, cây,
@@ -376,21 +417,26 @@ Phần code ký và kiểm chữ ký nằm ở `shared/team-protocol.js`, dùng 
 | --- | --- | --- |
 | `room` | `{ room: { mode, counts: { work, rest, wait }, people? } }` | Khi có thay đổi, tối đa 1,5 giây một lần; gửi lại cả phòng mỗi 60 giây |
 | `ev` | `{ list: [{ p, type, ts, label? }] }` (tối đa 50) | Khi phòng mở, hoặc phòng đóng đang có người được xem |
+| `logreq` | `{ room, p, id }`: xin hội thoại của phiên `p` ở phòng `room` | Người xem bấm Xem hội thoại (hub 0.6.0) |
+| `log` | `{ id, p, items: [{ role, text \| type/label/desc, ts }] }` hoặc `{ id, p, error }`, tối đa 192 KB | Máy chủ phòng trả lời một `logreq` |
 
 **Tin nhắn từ hub xuống**
 
 | `t` | Nội dung |
 | --- | --- |
-| `hello` | `{ team, me: { id, name, role, owner }, policy: { details }, members, rooms: [room…], grants, knocks, asks }`, ngay khi kết nối. `owner` là `true` với admin (văn phòng bản cũ đọc trường này) |
+| `hello` | `{ team, me: { id, name, role, owner }, policy: { details }, members, rooms: [room…], grants, knocks, asks }` (từ 0.6.0, `room.events`: 50 sự kiện gần nhất của phòng người đó được xem), ngay khi kết nối. `owner` là `true` với admin (văn phòng bản cũ đọc trường này) |
 | `members` | `{ list: [{ id, name, role, joinedAt }], me }`: có người vào, rời, bị xoá, thành hoặc thôi làm admin |
 | `room` | `{ room: { member: { id, name }, online, mode, counts, people?, access?: { until }, at } }`. `access` chỉ có với người được xem phòng đóng đó |
 | `ev` | `{ member, list }`: từ phòng mở cho mọi người; từ phòng đóng chỉ cho người được xem |
+| `logreq` | `{ from, p, id }`: tới máy chủ phòng, chỉ khi người hỏi xem được phòng và phòng có `log` |
+| `log` | `{ id, room, p, items }` hoặc `{ id, room, p, error }` (`off`, `gone`, `busy`, `denied`, `timeout`): chỉ tới người đã hỏi |
 | `knock` | `{ knock: { viewer: { id, name }, at } }`: có người gõ cửa phòng bạn |
 | `knocks` | `{ list: [{ viewer, at }] }`: lượt gõ cửa đang chờ ở phòng bạn |
 | `grants` | `{ list: [{ viewer, until, since }] }`: ai được xem phòng bạn (`until: null` là luôn) |
 | `access` | `{ room, state: 'granted'\|'denied'\|'revoked'\|'expired', until? }`: trả lời cho phòng bạn đã gõ cửa |
 | `policy` | `{ policy: { details } }` |
 | `gone` | `{ member }`: người đó đã rời team |
+| `update` | `{ min }`: admin vừa đặt bản tối thiểu của team (từ 0.6.0, `hello` có `version: { min }`, và `update: { min }` khi office đó bị giữ lại) |
 
 **Phòng được gửi những gì** (lọc **hai lần**: trên máy member bằng `roomView`, rồi trên hub bằng `cleanRoom` / `cleanEvents`)
 
@@ -400,10 +446,12 @@ Phần code ký và kiểm chữ ký nằm ở `shared/team-protocol.js`, dùng 
 | Mở | Thêm `people[]`: `id` (mã ngẫu nhiên, đổi mỗi lần chạy), `status`, `project` (tên repo, hoặc tên thư mục cuối), `role` (chức danh), `subs` (số subagent), `act` (loại việc: read, edit, bash…), `since`, `at` |
 | Mở + `details` bật | Thêm `label` (tên file, câu lệnh), đã qua `redact()`, tối đa 80 ký tự |
 | Đóng + có người được xem | Như phòng mở (cả `label` nếu `details` bật). Hub chỉ chuyển `people` và sự kiện cho người được xem; người khác vẫn chỉ thấy số đếm. Hết người được xem thì máy member thôi gửi `people` |
+| Mở, hoặc đóng có người được xem, + chủ phòng bật `room log` | Thêm `log: true`. Hội thoại không nằm trong phòng: chỉ gửi khi có người hỏi (`logreq` / `log`) |
 | Tạm dừng | Không có kết nối nào: phòng hiện offline |
 
 **Không bao giờ gửi**: prompt, tiêu đề cuộc trò chuyện, câu trả lời, đường dẫn thư mục, pid, session id, chi phí / token,
-todo, branch, link claude.ai, thông tin máy.
+todo, branch, link claude.ai, thông tin máy. Ngoại lệ duy nhất: chủ phòng tự bật `room log` thì prompt, câu trả lời và
+các bước (đã che bí mật, không có diff) của phiên được hỏi đi qua hub **tới đúng người hỏi**, không được lưu.
 
 **Hạn mức gói free**: tin nhắn WebSocket gửi vào hub được tính 20 tin = 1 request, tin hub gửi ra miễn phí. Ảnh chụp
 phòng lưu vào SQLite tối đa 30 giây một lần cho mỗi người (giới hạn ghi 100.000 dòng/ngày).
@@ -449,7 +497,7 @@ hết giờ: alarm của Durable Object ─▶ xoá grant, báo A và B ─▶ r
 ## Dữ liệu
 
 **Trên máy member** (`data/`, đã có trong `.gitignore`):
-- `team.json` (quyền `600`): `{ protocol, hub, teamId, teamName, memberId, name, publicKey, keyStore, room: { mode: 'closed' }, paused?, joinedAt }`. Relay đọc lại file này mỗi 2 giây khi nó đổi.
+- `team.json` (quyền `600`): `{ protocol, hub, teamId, teamName, memberId, name, publicKey, keyStore, room: { mode: 'closed', log? }, paused?, joinedAt }`. Relay đọc lại file này mỗi 2 giây khi nó đổi.
 - `team-key` (quyền `600`, chỉ khi không dùng Keychain): `{ publicKey, privateKey }`
 - Keychain: mục `My Office team key`, account là đường dẫn thư mục data. Nhờ vậy một bản office thứ hai
   (`OFFICE_DATA_DIR`) là một thành viên khác.
@@ -465,7 +513,7 @@ hết giờ: alarm của Durable Object ─▶ xoá grant, báo A và B ─▶ r
 | `grants` | `room`, `viewer`, `created_at`, `expires_at` | Bước 4: ai được xem phòng nào. `expires_at` null là luôn. Xoá khi hết hạn, bị thu hồi, hoặc một trong hai người rời team |
 | `knocks` | `room`, `viewer`, `at` | Lượt gõ cửa đang chờ, sống 10 phút |
 | `view_codes` | `hash`, `room`, `created_at`, `expires_at`, `used_by`, `used_at` | Chỉ lưu `sha256` của mã. Hết hạn quá 1 ngày thì xoá |
-| `access_log` | `id`, `at`, `room`, `viewer`, `action`, `detail` | `knock`, `grant` (detail: hour/day/always), `deny`, `revoke`, `expired`, `code`, `redeem`, `redeem-failed`. Giữ 200 dòng mỗi phòng |
+| `access_log` | `id`, `at`, `room`, `viewer`, `action`, `detail` | `knock`, `grant` (detail: hour/day/always), `deny`, `revoke`, `expired`, `code`, `redeem`, `redeem-failed`, `log` (đọc hội thoại, tối đa một dòng mỗi 10 phút mỗi người). Giữ 200 dòng mỗi phòng |
 | `audit` | `at`, `actor`, `action`, `detail` | Các hành động: `create`, `invite`, `join`, `join-failed`, `leave` |
 | `nonces` | `nonce`, `at` | Giữ 2 phút |
 | `rooms` | `member_id`, `data`, `at` | Bước 2: phòng gần nhất của từng người (đã làm sạch), để hub nhớ được sau khi ngủ. Xoá khi người đó rời team |
@@ -525,6 +573,13 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
   lần, hết hạn 10 phút, không dùng được cho phòng mình, giữ "luôn"; 10 mã sai thì tạm khoá; tối đa 5 mã chưa dùng;
   `roomView` / `cleanRoom` với `share`. Thêm vào `team-relay.test.mjs`: relay chỉ gửi người khi có người được xem, hết giờ
   thì thôi; giữ lượt gõ cửa và câu trả lời cho trang. `team-floors.test.mjs`: trạng thái `shared`.
+- `tests/unit/team-log.test.mjs` (hub 0.6.0): hub giữ 50 sự kiện gần nhất (không vào SQLite) và gửi trong `hello`; phòng
+  đóng thì xoá, chỉ người được xem nhận; tắt `details` thì xoá; rời team thì xoá. `room.log` chỉ khi chủ phòng bật;
+  `cleanLog` che bí mật, cắt đoạn dài, giữ 60 mục, bỏ vai trò lạ. Hỏi hội thoại: tắt thì `off`; quá nhanh thì `busy`;
+  phòng đóng chỉ người được xem; chủ phòng offline thì `gone`; id sai, phòng của mình thì `denied`. Trả lời chỉ tới người
+  hỏi, một lần, đã làm sạch, không gì vào SQLite; người khác không trả lời thay được; lỗi lạ thành `gone`; gói lớn hơn
+  32 KB chỉ cho phép với `log`. Nhật ký ra vào một dòng mỗi 10 phút. Relay: tắt thì không đọc gì; bật thì trả hội thoại
+  đã che bí mật; phiên không có thì `gone`; `requestLog` khi chưa kết nối, khi có trả lời, khi bị từ chối.
 - `tests/unit/team-onboarding.test.mjs`: trang link mời (tên team được escape, nút mở văn phòng, lệnh cài kèm link và
   ngôn ngữ; link hết hạn chỉ còn lời báo, không nút, không lệnh), chọn ngôn ngữ, `?join=` chỉ nhận link mời, tên team cho trang và team không tồn tại thì không ghi gì.
   `team-relay.test.mjs`: không đọc được khoá (Keychain đang khoá) thì thử lại, không bỏ cuộc.
@@ -573,6 +628,12 @@ chạy lệnh. Từ bước 2 (relay), máy member sẽ gộp sự kiện 1–2 
   danh, loại việc. Phòng đóng chưa cho ai xem thì chi tiết không bao giờ rời máy. Từ bước 4, phòng đóng **đang có người
   được xem** cũng đi qua hub (chỉ trong bộ nhớ, không lưu). Mã hoá đầu cuối làm ở bước 6.
 - Thu hồi có hiệu lực ngay trên hub, nhưng người xem **đã thấy** gì thì vẫn đã thấy (như nhìn qua cửa kính).
+- **Bắt buộc cập nhật** chạy `git pull` + build trên máy member khi admin bấm, nhưng chỉ từ remote của chính máy đó
+  (thường là GitHub), không bao giờ từ hub: hub chỉ nói số bản. Người chạy hub có thể đặt số bản rất cao để giữ mọi
+  người ngoài team (không chạy được code gì). Build mất 1–3 phút; trong lúc đó trang có thể chập chờn rồi tự tải lại.
+- **Cho xem hội thoại** để lộ nhiều hơn tên file: prompt và câu trả lời của bạn. Bí mật dạng token / key được che, nhưng
+  nội dung công việc thì không. Chỉ bật khi cần (vd. đang pair với người khác), tắt bằng một bấm; người đã đọc thì vẫn
+  đã đọc. Hội thoại đi qua hub (chỉ chuyển tiếp, không lưu), nên người chạy hub về kỹ thuật đọc được lúc nó đi qua.
 - "Luôn cho phép" giữ tới khi bạn thu hồi hoặc một trong hai người rời team.
 - Mã xem chỉ 10 ký tự nhưng dùng một lần, sống 10 phút, sai 10 lần thì tạm khoá người nhập 10 phút.
 - **Cần Node 22** cho relay (WebSocket có sẵn). Node thấp hơn thì relay không chạy, `doctor` báo lỗi.

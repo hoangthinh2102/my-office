@@ -215,4 +215,19 @@ export default {
     saved: 'Đã lưu clip {ext} ({size}) vào thư mục Tải về.',
     unsupported: 'Trình duyệt này không quay được clip.',
   },
+  // văn phòng tự cập nhật (src/office/ui/update.js, server/updater.mjs)
+  update: {
+    waiting: 'Có bản mới (#{n}): sẽ tự cập nhật khi các yêu cầu duyệt đang chờ được trả lời.',
+    running: 'Đang cập nhật My Office lên bản #{n}… Trang sẽ tự tải lại sau vài phút.',
+    done: 'Đã cập nhật My Office lên bản #{n}.',
+    failed: 'Cập nhật không được ({why}): văn phòng vẫn chạy bản cũ. Xem lỗi: my-office update',
+    failedHeld: 'Team cần bản #{min} nhưng cập nhật không được ({why}): máy này vẫn chạy bản #{build} và tạm ở ngoài team. Xem lỗi: my-office update',
+    held: 'Team cần bản #{min}, máy này đang ở #{build} nhưng không tự cập nhật được ({why}). Chạy: my-office update',
+    why: {
+      branch: 'thư mục không ở nhánh main', changes: 'có thay đổi riêng trong thư mục', diverged: 'nhánh main ở máy này khác GitHub',
+      'no-service': 'văn phòng không chạy bằng dịch vụ nền', 'no-git': 'không phải bản clone git', 'no-newer': 'GitHub chưa có bản đó',
+      off: 'đã tắt tự cập nhật (OFFICE_AUTO_UPDATE=0)', build: 'bản mới build lỗi, đã quay lại bản cũ', pull: 'không tải được bản mới',
+      lost: 'cập nhật bị gián đoạn', start: 'không chạy được lệnh cập nhật', same: 'đã là bản mới nhất', other: 'lỗi không rõ',
+    },
+  },
 };

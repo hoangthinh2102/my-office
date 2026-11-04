@@ -114,7 +114,40 @@ export default {
   },
   card: { room: 'Phòng của {name}', readOnly: 'Chỉ xem: đây là phòng của người khác.' },
   // the side columns while you look at someone's room (ui/team-side.js)
-  side: { back: 'Của bạn', backTitle: 'Về phiên và hoạt động của bạn', sub: 'Tầng {n} · chỉ xem', feed: 'Hoạt động · {name}', none: 'Không có phiên nào đang chạy', empty: 'Chưa có hoạt động nào gần đây', closed: 'Phòng đang đóng: chỉ thấy số người.' },
+  side: { back: 'Của bạn', backTitle: 'Về phiên và hoạt động của bạn', sub: 'Tầng {n} · chỉ xem', feed: 'Hoạt động · {name}', none: 'Không có phiên nào đang chạy', empty: 'Chưa có hoạt động nào gần đây', closed: 'Phòng đang đóng: chỉ thấy số người.', emptyFilter: 'Không có hoạt động nào khớp bộ lọc', showOnly: 'Chỉ xem hoạt động của phiên này', showAll: 'Xem hoạt động của tất cả phiên', onlyOf: 'Chỉ {name}', read: 'Xem hội thoại', logOn: 'Chủ phòng cho xem hội thoại của các phiên (chỉ đọc).' },
+  // bắt cả team cập nhật (admin; src/office/ui/team.js, server/updater.mjs)
+  upd: {
+    none: 'Máy bạn: bản #{build}. Mỗi văn phòng tự cập nhật khi GitHub có bản mới.',
+    min: 'Team cần bản #{min} trở lên · máy bạn: #{build}. Văn phòng cũ hơn tự cập nhật rồi mới vào lại team.',
+    button: 'Bắt mọi người cập nhật',
+    confirm: 'Bấm lần nữa: cả team phải lên bản mới nhất',
+    done: 'Từ giờ team cần bản #{n} ({commit}). Văn phòng cũ hơn đang tự cập nhật.',
+    failed: 'Không đặt được: {why}',
+    demo: 'Bản demo: không có team thật để cập nhật.',
+    err: { 'not-owner': 'chỉ admin mới làm được', 'hub-old': 'hub của team cần bản 0.6.0 (cd hub && npm run deploy)', 'no-remote': 'không đọc được nhánh main trên GitHub', 'hub-unreachable': 'không kết nối được hub' },
+    held: 'Văn phòng này cũ hơn bản team yêu cầu: đang tự cập nhật, xong sẽ vào lại team.',
+    heldStuck: 'Văn phòng này cũ hơn bản team yêu cầu (#{min}) và chưa tự cập nhật được: tạm ở ngoài team. Chạy: my-office update',
+  },
+  // đọc hội thoại một phiên ở phòng người khác, khi chủ phòng cho phép (src/office/ui/team-log.js)
+  log: {
+    label: 'Hội thoại của một phiên trong phòng người khác',
+    sub: 'Phòng của {name} · chỉ đọc',
+    readOnly: 'Chỉ đọc',
+    note: 'Phần gần đây của hội thoại, gửi thẳng từ máy chủ phòng tới bạn (bí mật đã che, đoạn dài bị cắt). Hub không lưu lại. Tự làm mới mỗi 10 giây.',
+    loading: 'Đang hỏi máy của chủ phòng…',
+    updated: 'Cập nhật lúc {time}',
+    gone: 'Phiên này không còn trong phòng.',
+    switch: 'Cho xem hội thoại của các phiên',
+    on: 'Ai xem được phòng bạn thì đọc được hội thoại gần đây của các phiên (đã che bí mật, không có diff). Mỗi lần xem được ghi vào nhật ký ra vào.',
+    off: 'Tắt: không ai đọc được hội thoại các phiên của bạn.',
+    onTitle: 'đang cho xem hội thoại các phiên',
+    failed: 'Không đổi được: {why}',
+    err: {
+      off: 'Chủ phòng đã tắt cho xem hội thoại.', gone: 'Phiên này không còn nữa.', busy: 'Đang tải, thử lại sau vài giây.',
+      timeout: 'Không lấy được: máy chủ phòng không trả lời.', denied: 'Bạn không còn xem được phòng này.', offline: 'Chưa kết nối được hub của team.',
+      other: 'Không lấy được hội thoại.',
+    },
+  },
   readOnly: 'Chỉ xem: không ai giao việc được cho phòng khác.',
   // vào team và mời người mà không cần gõ lệnh (src/office/ui/team-join.js)
   join: {
@@ -172,7 +205,7 @@ export default {
     knocked: '{name} đang gõ cửa phòng bạn. Mở Toà nhà để trả lời.',
     logTitle: 'Nhật ký ra vào', loading: 'Đang tải…', logEmpty: 'Chưa có gì.', logFailed: 'Không tải được nhật ký.',
     log: {
-      knock: '{name} gõ cửa', grant: 'Bạn cho {name} xem ({detail})', deny: 'Bạn từ chối {name}', revoke: 'Bạn thôi cho {name} xem',
+      log: '{name} xem hội thoại các phiên', knock: '{name} gõ cửa', grant: 'Bạn cho {name} xem ({detail})', deny: 'Bạn từ chối {name}', revoke: 'Bạn thôi cho {name} xem',
       expired: '{name} hết giờ xem', code: 'Bạn tạo mã xem', redeem: '{name} dùng mã xem', 'redeem-failed': '{name} nhập mã không đúng',
     },
     failed: 'Không làm được: {why}',

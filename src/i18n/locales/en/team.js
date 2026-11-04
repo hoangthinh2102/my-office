@@ -113,8 +113,41 @@ export default {
       bench: { name: 'Bench', hint: 'Give it a little bounce' },
     },
   },
-  side: { back: 'Yours', backTitle: 'Back to your own sessions and activity', sub: 'Floor {n} · view only', feed: 'Activity · {name}', none: 'No sessions running', empty: 'Nothing lately', closed: 'The room is closed: only how many are in.' },
+  side: { back: 'Yours', backTitle: 'Back to your own sessions and activity', sub: 'Floor {n} · view only', feed: 'Activity · {name}', none: 'No sessions running', empty: 'Nothing lately', closed: 'The room is closed: only how many are in.', emptyFilter: 'Nothing matches the filters', showOnly: 'Show only this session’s activity', showAll: 'Show every session’s activity', onlyOf: 'Only {name}', read: 'Read the conversation', logOn: 'The owner lets you read their sessions’ conversations (read only).' },
   card: { room: "{name}'s room", readOnly: 'View only: this is someone else’s room.' },
+  // requiring the whole team to update (admins; src/office/ui/team.js, server/updater.mjs)
+  upd: {
+    none: 'Yours: version #{build}. Each office updates itself when GitHub has a newer one.',
+    min: 'The team requires version #{min} or newer · yours: #{build}. Older offices update themselves before they come back.',
+    button: 'Make everyone update',
+    confirm: 'Click again: the whole team must run the newest version',
+    done: 'The team now requires version #{n} ({commit}). Older offices are updating themselves.',
+    failed: "Couldn't set it: {why}",
+    demo: 'Demo: there is no real team to update.',
+    err: { 'not-owner': 'only admins can', 'hub-old': "the team's hub needs version 0.6.0 (cd hub && npm run deploy)", 'no-remote': "couldn't read main on GitHub", 'hub-unreachable': "couldn't reach the hub" },
+    held: 'This office is older than the team requires: it is updating itself and comes back once done.',
+    heldStuck: "This office is older than the team requires (#{min}) and couldn't update itself: out of the team for now. Run: my-office update",
+  },
+  // reading one session's conversation in someone else's room, when its owner allows it (src/office/ui/team-log.js)
+  log: {
+    label: 'A session’s conversation in someone else’s room',
+    sub: '{name}’s room · read only',
+    readOnly: 'Read only',
+    note: 'The latest part of the conversation, sent straight from the owner’s computer to you (secrets masked, long texts cut). The hub keeps none of it. Refreshes every 10 seconds.',
+    loading: 'Asking the owner’s computer…',
+    updated: 'Updated at {time}',
+    gone: 'This session is no longer in the room.',
+    switch: 'Let people read my sessions’ conversations',
+    on: 'Anyone who can see your room can read your sessions’ recent conversations (secrets masked, no diffs). Each look goes in the access log.',
+    off: 'Off: nobody can read your sessions’ conversations.',
+    onTitle: 'your sessions’ conversations can be read',
+    failed: 'Couldn’t change it: {why}',
+    err: {
+      off: 'The owner turned off reading conversations.', gone: 'This session is gone.', busy: 'Still loading: try again in a few seconds.',
+      timeout: 'Couldn’t get it: the owner’s computer didn’t answer.', denied: 'You can’t see this room any more.', offline: 'Not connected to the team’s hub yet.',
+      other: 'Couldn’t get the conversation.',
+    },
+  },
   readOnly: 'View only: nobody can give work to another room.',
   // joining and inviting without the command line (src/office/ui/team-join.js)
   join: {
@@ -172,7 +205,7 @@ export default {
     knocked: '{name} is knocking on your room. Open the Building to answer.',
     logTitle: 'Access log', loading: 'Loading…', logEmpty: 'Nothing yet.', logFailed: "Couldn't load the log.",
     log: {
-      knock: '{name} knocked', grant: 'You let {name} in ({detail})', deny: 'You said no to {name}', revoke: 'You stopped {name} looking in',
+      log: '{name} read your sessions’ conversations', knock: '{name} knocked', grant: 'You let {name} in ({detail})', deny: 'You said no to {name}', revoke: 'You stopped {name} looking in',
       expired: "{name}'s time ran out", code: 'You made a view code', redeem: '{name} used a view code', 'redeem-failed': '{name} tried a code that didn’t work',
     },
     failed: "Couldn't do that: {why}",
