@@ -45,7 +45,11 @@ const FRONTS = [
   [['x', X0, DEPTS[2].z0, DEPTS[2].z1], ['z', Z1, DEPTS[2].x0, DEPTS[2].x1]],
   [['x', X1, DEPTS[3].z0, DEPTS[3].z1], ['z', Z1, DEPTS[3].x0, DEPTS[3].x1]],
 ];
-const LIFT = { x0: WING.corB[0], x1: WING.corB[1], z0: Z0 + 0.05, z1: WING.corA[1] - 0.05 };
+// the lift: a shaft at the far end of corridor A, against the building's outer wall in line with the lobby's lift
+// (world/entrance.js), and built like it: dark cladding, brass trim, steel doors onto the corridor, a floor display.
+// It runs from the ground (the wing's dead end, where nobody walks) up through every floor to the roof.
+const LIFT = { x0: X0 + 0.1, x1: X0 + 1.9, z0: Z0 + 0.05, z1: WING.corA[1] - 0.05 };
+const LIFT_DOOR = { half: 0.5, h: 2.15 };   // (as the lobby's: two leaves, 1 m wide together)
 
 let M = null;              // shared materials and geometry, made the first time the building is needed
 let tower = null, roof = null, columns = null, cab = null;
@@ -56,7 +60,7 @@ const breakOf = new Map(); // member id -> Map person id -> break-corner seat, f
 let detail = null;         // the floor you are on, furnished: { F, D } (world/tower-floor.js)
 const chars = new Map();   // `${member}/${person}` -> { root, P, anim, seed, seat, room, floor }
 export const view = { mode: 'mine', floor: 0 };
-let minZoom0 = 0, cabY = TOWER_Y0, nightShown = null;
+let minZoom0 = 0, cabY = 0, nightShown = null, liftShown = '';
 
 /* ---------- pieces ---------- */
 function materials() {
@@ -72,9 +76,15 @@ function materials() {
     screen: new THREE.MeshBasicMaterial({ color: '#FFFFFF' }), bean: std('#FFFFFF', { roughness: 0.85 }), skin: std('#F0C8A4', { roughness: 0.7 }),
     shade: new THREE.MeshBasicMaterial({ color: '#3E4752', transparent: true, opacity: 0.7, depthWrite: false }),
     far: glass('#9DB7C8', 0.42), clear: glass('#CFE6F2', 0.14), frost: glass('#EEF2F5', 0.64, { roughness: 0.9, metalness: 0 }),
-    shaftGlass: glass('#BFD8E6', 0.2), cab: std('#C9CED6', { metalness: 0.6, roughness: 0.35 }), cabLight: new THREE.MeshBasicMaterial({ color: '#FFE7B8' }),
+    shaftGlass: glass('#BFD8E6', 0.2), cabLight: new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 1.45, 1.2) }),
+    // the lift, as the lobby's (world/entrance.js): cladding, brass, steel; its car's light walls and wood back
+    clad: std('#3A3F47', { roughness: 0.55 }), cap: std('#2B2F36', { roughness: 0.5 }), brass: std('#C9A227', { metalness: 0.7, roughness: 0.32 }),
+    steel: std('#BCC4CC', { metalness: 0.78, roughness: 0.26 }), carWall: std('#E4DCCF', { roughness: 0.55 }), carWood: std('#8E6B4E', { roughness: 0.5 }),
+    dispBox: std('#15181E', { roughness: 0.4 }),
     hit: new THREE.MeshBasicMaterial({ visible: false }),
   };
+  M.disp = canvasPlate(192, 72); M.disp.tex.colorSpace = THREE.SRGBColorSpace;
+  M.dispM = new THREE.MeshBasicMaterial({ map: M.disp.tex, toneMapped: false });   // (one display, shown on every landing)
   return M;
 }
 // the corridors' floor in each look, and the rooms' carpet (tinted with the member's colour), drawn once
@@ -146,20 +156,18 @@ function buildFloor(f) {
   // what the room clicks land on (a closed room's glass lid, an open room's floor), and the whole floor from outside
   const roomHits = DEPTS.map((d, i) => { const m = put(g, new THREE.Mesh(M.plane, M.hit), (d.x0 + d.x1) / 2, 0.02, d.cz); m.scale.set(d.x1 - d.x0, 1, d.z1 - d.z0); m.userData.tw = { kind: 'room', floor: f.n, i }; return m; });
   const floorHit = block(g, M.hit, X1 - X0, FLOOR_H, Z1 - Z0, CX, FLOOR_H / 2 - 0.3, CZ); floorHit.userData.tw = { kind: 'floor', floor: f.n };
-  // this floor's piece of the lift shaft: glass and four posts, slab to slab (a floor lifted away takes its piece along)
-  { const sw = LIFT.x1 - LIFT.x0, sd = LIFT.z1 - LIFT.z0, scx = (LIFT.x0 + LIFT.x1) / 2, scz = (LIFT.z0 + LIFT.z1) / 2, h = INNER;
-    boxes(g, M.mull, [[0.08, h, 0.08, LIFT.x0, h / 2, LIFT.z0], [0.08, h, 0.08, LIFT.x1, h / 2, LIFT.z0], [0.08, h, 0.08, LIFT.x0, h / 2, LIFT.z1], [0.08, h, 0.08, LIFT.x1, h / 2, LIFT.z1]]);
-    block(g, M.shaftGlass, sw, h, sd, scx, h / 2, scz).renderOrder = 2; }
-  // the floor's directory by the lift: "Floor n" and its four rooms
+  // this floor's piece of the lift shaft, slab to slab (a floor lifted away takes its piece along)
+  const lift = { doors: liftPiece(g, INNER), open: 0 };
+  // the floor's directory beside the lift: "Floor n" and its four rooms
   const dir = canvasPlate(512, 360);
   const dirM = new THREE.MeshBasicMaterial({ map: dir.tex, toneMapped: false });
-  block(g, M.mull, 1.0, 1.55, 0.08, LIFT.x1 + 0.9, 0.78, WING.corA[1] - 0.2);
-  const face = put(g, new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.63), dirM), LIFT.x1 + 0.9, 1.15, WING.corA[1] - 0.155);
+  block(g, M.mull, 1.0, 1.55, 0.08, LIFT.x1 + 1.6, 0.78, WING.corA[1] - 0.2);
+  const face = put(g, new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.63), dirM), LIFT.x1 + 1.6, 1.15, WING.corA[1] - 0.155);
   face.userData.own = true;
   // the floor's name, seen from outside
   const lab = el('div', 'tw-floor-tag'); const label = new CSS2DObject(lab); label.position.set(X1 + 0.4, INNER * 0.55, Z1 + 0.4); g.add(label);
   // (the simple desks and chairs: what the floor shows until you are on it, when world/tower-floor.js furnishes it)
-  const F = { n: f.n, y, g, theme, simple, near, rail, rooms: [], screens, bodies, heads, shades, hits, roomHits, floorHit, dir, dirM, face, label, lab, hitInfo: [] };
+  const F = { n: f.n, y, g, theme, simple, near, rail, lift, rooms: [], screens, bodies, heads, shades, hits, roomHits, floorHit, dir, dirM, face, label, lab, hitInfo: [] };
   F.rooms = DEPTS.map((d, i) => roomView(F, i));
   for (const R of F.rooms) near.push(...R.fronts);
   tower.add(g);
@@ -187,6 +195,44 @@ function withDoor(d, [ax, az, bx, bz]) {
   return az === bz ? [[Math.min(ax, bx), az, at - 0.6, az], [at + 0.6, az, Math.max(ax, bx), az]] : [[ax, Math.min(az, bz), ax, at - 0.6], [ax, at + 0.6, ax, Math.max(az, bz)]];
 }
 
+/* One storey of the lift shaft, h high, standing in g: three clad walls; on the corridor side two steel doors in a
+   brass frame, the display over them and a call button beside; on the side toward the rooms (the one the camera sees),
+   a glass strip down the middle, so the car shows going by. Returns the two door leaves. */
+function liftPiece(g, h) {
+  const { x0, x1, z0, z1 } = LIFT, w = x1 - x0, d = z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, t = 0.1;
+  const { half: dw, h: dh } = LIFT_DOOR, strip = 0.9;
+  boxes(g, M.clad, [
+    [w, h, t, cx, h / 2, z0 + t / 2],                                                    // the side by the far glass
+    [t, h, d, x0 + t / 2, h / 2, cz],                                                    // the outer wall's side
+    ...[-1, 1].map((sd) => [(w - strip) / 2, h, t, cx + sd * (strip + (w - strip) / 2) / 2, h / 2, z1 - t / 2]),   // round the glass strip
+    ...[-1, 1].map((sd) => [0.12, dh, (d - 2 * dw) / 2, x1 - 0.06, dh / 2, cz + sd * (dw + (d - 2 * dw) / 4)]),  // beside the doors
+    [0.12, h - dh, d, x1 - 0.06, dh + (h - dh) / 2, cz],                                 // over the doors
+  ]);
+  pane(g, M.shaftGlass, cx - strip / 2, z1 - 0.05, cx + strip / 2, z1 - 0.05, h);
+  boxes(g, M.brass, [
+    ...[-1, 1].map((sd) => [0.05, dh + 0.05, 0.06, x1 + 0.015, dh / 2, cz + sd * (dw + 0.03)]),   // the doors' frame
+    [0.05, 0.06, 2 * dw + 0.12, x1 + 0.015, dh + 0.03, cz],
+    [0.03, 0.035, d + 0.02, x1 + 0.02, h - 0.06, cz],                                    // a brass line under the top
+  ]);
+  block(g, M.dispBox, 0.04, 0.24, 0.6, x1 + 0.02, dh + 0.36, cz);
+  const disp = put(g, new THREE.Mesh(new THREE.PlaneGeometry(0.54, 0.2), M.dispM), x1 + 0.045, dh + 0.36, cz); disp.rotation.y = Math.PI / 2;
+  block(g, M.steel, 0.03, 0.26, 0.12, x1 + 0.015, 1.12, cz + dw + 0.2);                 // the call button
+  return [-1, 1].map((sd) => { const leaf = block(g, M.steel, 0.03, dh - 0.02, dw + 0.01, x1 - 0.06, (dh - 0.02) / 2, cz + sd * dw / 2); leaf.userData.sd = sd; return leaf; });
+}
+// slides a landing's doors: k 0 shut, 1 open (the leaves go into the wall on each side)
+function setDoors(doors, k) {
+  const cz = (LIFT.z0 + LIFT.z1) / 2, e = k * k * (3 - 2 * k);
+  for (const leaf of doors) leaf.position.z = cz + leaf.userData.sd * (LIFT_DOOR.half / 2 + e * LIFT_DOOR.half * 0.96);
+}
+// the display on every landing: where the car is (G on the ground), with an arrow while it moves
+function drawLiftDisplay(text) {
+  const { c, g, tex } = M.disp;
+  g.fillStyle = '#0B0D10'; g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = '#FFB23F'; g.font = '700 50px "JetBrains Mono", ui-monospace, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(text, c.width / 2, c.height / 2 + 2);
+  tex.needsUpdate = true;
+}
+
 function buildShell(n) {
   // columns carrying the building over the wing's open sides (seen from outside only), the lift's cab, the roof
   const g = new THREE.Group(); g.name = 'team-shell'; tower.add(g);
@@ -194,15 +240,23 @@ function buildShell(n) {
   columns = boxes(g, M.column, cols);
   const top = floorY(n + 1);
   const sw = LIFT.x1 - LIFT.x0, sd = LIFT.z1 - LIFT.z0, scx = (LIFT.x0 + LIFT.x1) / 2, scz = (LIFT.z0 + LIFT.z1) / 2;
-  cab = new THREE.Group(); g.add(cab); cab.position.set(scx, cabY, scz);
-  block(cab, M.cab, sw - 0.25, 0.08, sd - 0.2, 0, 0.04, 0); block(cab, M.cab, sw - 0.25, 0.08, sd - 0.2, 0, 2.36, 0);
-  block(cab, M.cab, 0.06, 2.3, sd - 0.2, -(sw - 0.25) / 2, 1.2, 0); block(cab, M.cab, 0.06, 2.3, sd - 0.2, (sw - 0.25) / 2, 1.2, 0);
-  block(cab, M.cabLight, sw - 0.5, 0.02, sd - 0.5, 0, 2.31, 0);
+  // the shaft from the ground up to floor 1, with its own landing on the ground (at the end of the wing's corridor A)
+  liftPiece(g, TOWER_Y0 - 0.3);   // (its doors stay shut: the car only stops on the ground when nobody is watching a floor)
+  block(g, M.cap, sw + 0.02, 0.12, sd + 0.02, scx, 0.06, scz);
+  // the car, as the lobby's: light side walls, a wood back with a rail, a lit ceiling
+  const cw = sw - 0.3, cd = sd - 0.3;
+  cab = new THREE.Group(); g.add(cab); cab.position.set(scx - 0.05, cabY, scz);
+  block(cab, M.cap, cw, 0.08, cd, 0, 0.04, 0); block(cab, M.carWall, cw, 0.06, cd, 0, 2.33, 0);
+  block(cab, M.carWood, 0.04, 2.2, cd, -cw / 2, 1.18, 0);
+  for (const s of [-1, 1]) block(cab, M.carWall, cw, 2.2, 0.03, 0, 1.18, s * cd / 2);
+  block(cab, M.steel, 0.04, 0.04, cd - 0.3, -cw / 2 + 0.08, 0.95, 0);
+  block(cab, M.cabLight, cw - 0.3, 0.02, cd - 0.3, 0, 2.29, 0);
   // the roof: a parapet round it, the machines on it
   roof = new THREE.Group(); roof.position.y = top; g.add(roof);
   block(roof, M.slab, X1 - X0 + 0.3, 0.3, Z1 - Z0 + 0.3, CX, -0.15, CZ);
   boxes(roof, M.slab, [[X1 - X0 + 0.3, 0.6, 0.15, CX, 0.3, Z0 - 0.08], [X1 - X0 + 0.3, 0.6, 0.15, CX, 0.3, Z1 + 0.08], [0.15, 0.6, Z1 - Z0 + 0.3, X0 - 0.08, 0.3, CZ], [0.15, 0.6, Z1 - Z0 + 0.3, X1 + 0.08, 0.3, CZ]]);
-  boxes(roof, M.column, [[2.4, 1.2, 1.6, X0 + 3, 0.6, Z0 + 2.5], [1.6, 0.9, 1.6, X0 + 6.5, 0.45, Z0 + 2.5], [sw + 0.4, 1.4, sd + 0.4, scx, 0.7, scz]]);
+  boxes(roof, M.column, [[2.4, 1.2, 1.6, X0 + 4.2, 0.6, Z0 + 2.5], [1.6, 0.9, 1.6, X0 + 7.6, 0.45, Z0 + 2.5]]);
+  block(roof, M.clad, sw + 0.3, 1.5, sd + 0.3, scx, 0.75, scz); block(roof, M.cap, sw + 0.4, 0.1, sd + 0.4, scx, 1.55, scz);   // the lift's machine room
 }
 
 function dispose(o) {
@@ -489,9 +543,18 @@ export function updateTower(dt, t) {
     c.root.position.y = applyChibiPose(c.P, pose, dt) + (c.st === 'break' ? SIT_UP[detail?.F.theme] || 0 : 0);
   }
   if (detail) detail.D.update(dt, t);
-  // the lift glides to the floor you are on (the ground: it waits at floor 1)
-  const goal = floorY(view.mode === 'floor' ? view.floor : 1);
+  // the lift glides to the floor you are on (else it waits on the ground); there its doors open
+  const goal = view.mode === 'floor' ? floorY(view.floor) : 0;
   if (cab && Math.abs(goal - cabY) > 0.005) { cabY += (goal - cabY) * Math.min(1, dt * 2.2); cab.position.y = cabY; }
+  if (cab) {
+    const at = cabY < TOWER_Y0 / 2 ? 0 : Math.round((cabY - TOWER_Y0) / FLOOR_H) + 1, moving = Math.abs(goal - cabY) > 0.05;
+    const text = (moving ? (goal > cabY ? '▲ ' : '▼ ') : '') + (at ? String(at) : 'G');
+    if (text !== liftShown) { liftShown = text; drawLiftDisplay(text); }
+    for (const F of floors) {
+      const want = !moving && view.mode === 'floor' && F.n === view.floor ? 1 : 0;
+      if (F.lift.open !== want) { F.lift.open = THREE.MathUtils.clamp(F.lift.open + (want ? 1 : -1) * dt * 1.6, 0, 1); setDoors(F.lift.doors, F.lift.open); }
+    }
+  }
   // lights: warm in every room someone is in, brighter after dark
   if (nightShown !== night) {
     nightShown = night;

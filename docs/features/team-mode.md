@@ -125,7 +125,7 @@ Chỉ ở kiểu văn phòng **Tập đoàn** (`hq`); các kiểu khác chỉ c�
 - **Luôn ít nhất 5 tầng** (`MIN_FLOORS`, `padFloors`): vào team rồi thì dù chưa có ai, toà nhà đã đủ 5 tầng phòng
   trống (nhãn tầng: "Còn trống"); người vào lấp dần từ tầng 1, đông hơn 20 người thì thêm tầng.
 - **Một tầng** dùng đúng mặt bằng của cánh phòng ban (`DEPTS`): 4 phòng, mỗi phòng 2 cụm bàn = 8 chỗ; hành lang A, B;
-  bảng chỉ dẫn tầng cạnh thang máy; thang máy kính chạy tới tầng đang xem. Tầng 1 bắt đầu ở `TOWER_Y0 = 4.5` m, mỗi tầng
+  bảng chỉ dẫn tầng cạnh thang máy. Tầng 1 bắt đầu ở `TOWER_Y0 = 4.5` m, mỗi tầng
   cao `FLOOR_H = 3.4` m (`src/shared/team-floors.js`).
 - **Chỗ ngồi** (`seatPeople`): ai đã ngồi đâu thì giữ chỗ đó khi có người vào / ra; người mới lấy chỗ trống đầu tiên;
   quá 8 người thì nhãn phòng ghi `+n`.
@@ -134,7 +134,13 @@ Chỉ ở kiểu văn phòng **Tập đoàn** (`hq`); các kiểu khác chỉ c�
 - **Tầng đang xem có đồ đầy đủ** (`src/office/world/tower-floor.js`), như cánh phòng ban của bạn: bàn thật (laptop,
   màn hình phụ, tủ, ghế xoay, đèn bàn, đồ lặt vặt), màn hình hiện đúng việc người ngồi đó đang làm (code, terminal,
   web, chờ duyệt, màn hình chờ khi nghỉ), biển tên ở cửa phòng (tên người, trạng thái phòng), bảng sprint, cây,
-  góc cà phê và bình nước cạnh thang máy, bảng tên tầng ở đầu hành lang. Phòng có khe cửa ở đúng chỗ cửa của cánh.
+  góc cà phê và bình nước ở đầu hành lang bên kia, bảng tên tầng trên vách kính hành lang A. Phòng có khe cửa ở đúng chỗ cửa của cánh.
+- **Thang máy** (`LIFT`, `liftPiece` trong `team-tower.js`): một trục ở cuối hành lang A, sát tường ngoài, thẳng hàng với
+  thang ở sảnh (`world/entrance.js`) và cùng kiểu: ốp xám đậm, viền đồng, hai cánh cửa thép trong khung đồng mở ra hành
+  lang, bảng số tầng trên cửa, nút gọi. Trục chạy liền từ mặt đất (đầu cụt của hành lang A, không ai đi qua) lên tới phòng
+  máy trên mái. Mặt hướng vào phòng có dải kính để thấy cabin chạy. Cabin tới tầng đang xem thì cửa tầng đó mở; ở toàn
+  nhà thì cabin về mặt đất. Bảng số trên mọi tầng cùng hiện chỗ cabin ("G" ở mặt đất, "▲ 3" khi đang lên). Thang ở sảnh
+  giữ hoạt cảnh riêng (người mới đi thang lên).
 - **Ba kiểu tầng**, lần lượt từ tầng 1 (`themeOf` trong `src/shared/team-floors.js`, ai xem cũng thấy giống nhau):
   *Studio* (sofa, tủ thấp, ghế băng ở hành lang, sàn hành lang lát gạch), *Khu vườn* (ghế lười, bồn cây, tường rêu,
   nhiều cây, sàn gỗ sáng), *Thư viện* (ghế bành, đèn đọc sách, kệ sách thấp, bể cá ở hành lang, sàn gỗ tối).
