@@ -151,9 +151,10 @@ function floorSign(parent, n, theme) {
     g.font = `800 110px ${FONT}`; const t = tr('team.floor', { n }); fitText(g, t, w - 50); g.fillText(t, w / 2, 120);
     g.fillStyle = '#B9D6C4'; g.font = `600 44px ${FONT}`; const s = tr(`team.tower.theme.${theme}`); fitText(g, s, w - 50); g.fillText(s, w / 2, 230);
   });
-  put(parent, rbox(0.04, 1.3, 1.2, mat('#24382F', { roughness: 0.9 }), 0.01), -7.9, 1.25, (WING.corA[0] + WING.corA[1]) / 2);
-  const m = put(parent, new THREE.Mesh(new THREE.PlaneGeometry(1.08, 0.64), new THREE.MeshBasicMaterial({ map: tex })), -7.875, 1.45, (WING.corA[0] + WING.corA[1]) / 2);
-  m.rotation.y = Math.PI / 2; m.userData.noMerge = true;
+  // on the far glass of corridor A, past the lift (world/team-tower.js), facing down the corridor
+  put(parent, rbox(1.2, 1.3, 0.04, mat('#24382F', { roughness: 0.9 }), 0.01), -4.4, 1.6, WING.corA[0] + 0.08);
+  const m = put(parent, new THREE.Mesh(new THREE.PlaneGeometry(1.08, 0.64), new THREE.MeshBasicMaterial({ map: tex })), -4.4, 1.8, WING.corA[0] + 0.105);
+  m.userData.noMerge = true;
 }
 
 /* ---------- the floor ---------- */
@@ -228,7 +229,7 @@ export function furnishFloor(F, n, theme, desks, accents) {
     }
   });
 
-  /* the corridors: the floor's sign, a coffee corner and water by the lift, the look's own piece, plants */
+  /* the corridors: the floor's sign, a coffee corner and water at the far end from the lift, the look's own piece, plants */
   floorSign(g, n, theme);
   const cz = WING.z0 + 0.38;
   const cof = coffeeBar(g, 9.6, cz); D.fx.coffee = cof;
@@ -241,12 +242,12 @@ export function furnishFloor(F, n, theme, desks, accents) {
   if (theme === 'library') {
     const aq = aquarium(g, -4.4, cz); D.fx.fish = aq.fish;
     prop('aquarium', aq.g, () => { sfx.play('bloop'); D.fx.feedUntil = performance.now() + 6000; });
-    plant(-6.4, cz, 0.85, 'snake'); plant(-2.6, cz, 0.85, 'bush');
+    plant(-2.6, cz, 0.85, 'bush');   // (the lift's landing, west of x -5.2, stays clear)
   } else if (theme === 'garden') {
-    prop('planter', planterBox(g, -3.9, cz + 0.02, 0, 4.2, ['tree', 'bush', 'monstera', 'snake', 'tree']), 'wiggle');
+    prop('planter', planterBox(g, -3.4, cz + 0.02, 0, 3.6, ['tree', 'bush', 'monstera', 'snake', 'tree']), 'wiggle');
   } else {
     prop('bench', bench(g, -4.4, cz + 0.05), 'bounce');
-    plant(-6.0, cz, 0.85, 'monstera'); plant(-2.8, cz, 0.85, 'snake');
+    plant(-2.8, cz, 0.85, 'snake');
   }
   plant(1.75, cz, 0.85, 'bush'); plant(13.55, cz + 0.05, 1.0, 'monstera'); plant(7.2, cz, 0.8, 'snake');
   plant(WING.corB[0] + 0.45, WING.z1 - 0.45, 0.9, 'bush'); plant(WING.corB[1] - 0.45, WING.z1 - 0.45, 0.9, 'snake');
