@@ -39,7 +39,27 @@ export function buildGrid() {
   for (const [x, z, r] of floorBlocks) {
     for (let j = Math.floor((z - r - FPB.z0) / CELL); j <= Math.floor((z + r - FPB.z0) / CELL); j++) for (let i = Math.floor((x - r - FPB.x0) / CELL); i <= Math.floor((x + r - FPB.x0) / CELL); i++) if (i >= 0 && j >= 0 && i < W && j < H) grid[j * W + i] = 1;
   }
-  return { W, H, grid };
+  const g = { W, H, grid };
+  for (const s of solids.values()) stamp(s, g);
+  return g;
+}
+/* Things that come and go after the walls were measured (the team's lift on the ground, world/team-tower.js): the
+   walls are measured once, before the scene is merged (core/optimize.js), so these are stamped on the grid instead,
+   and lifted off again leaving the cells as they were. */
+const solids = new Map();   // key -> { box: { x0, x1, z0, z1 }, under: [cell, value, …] }
+function stamp(s, g) {
+  s.under = [];
+  const i0 = Math.max(0, Math.floor((s.box.x0 - FPB.x0) / CELL)), i1 = Math.min(g.W - 1, Math.floor((s.box.x1 - FPB.x0) / CELL));
+  const j0 = Math.max(0, Math.floor((s.box.z0 - FPB.z0) / CELL)), j1 = Math.min(g.H - 1, Math.floor((s.box.z1 - FPB.z0) / CELL));
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) { const k = j * g.W + i; s.under.push(k, g.grid[k]); g.grid[k] = 1; }
+}
+/** A solid footprint ({ x0, x1, z0, z1 }) under `key`, or none (null): first person cannot walk through it. */
+export function setSolid(key, box) {
+  const old = solids.get(key);
+  if (old) { if (fp?.grid && old.under) for (let n = 0; n < old.under.length; n += 2) fp.grid.grid[old.under[n]] = old.under[n + 1]; solids.delete(key); }
+  if (!box) return;
+  const s = { box, under: null }; solids.set(key, s);
+  if (fp?.grid) stamp(s, fp.grid);
 }
 function cellBlocked(x, z) {
   if (x < FPB.x0 || x >= FPB.x1 || z < FPB.z0 || z >= FPB.z1) return true;
@@ -74,6 +94,8 @@ export function toStreet() {
     fp.pos.set(ex.x + ex.n[0] * 0.3, ex.z + ex.n[1] * 0.3); fp.yaw = Math.atan2(ex.n[0], ex.n[1]); fp.pitch = -0.04;
   });
 }
+/** Out of first person by the team's lift (ui/team-lift.js): a moment's black, then fn (the floor you picked). */
+export function rideOut(fn) { through(() => { exitFp(); fn(); }); }
 function toOffice(now = false) {
   const go = () => { street()?.setWalker(null); street()?.shop?.feel(null); fp.street = false; fp.carry = null; fp.seat = null; setNear(null); fp.pos.set(DOOR_IN.x + 0.7, DOOR_IN.z); fp.yaw = Math.PI / 2; };
   if (now) go(); else through(go);
@@ -138,7 +160,7 @@ function setNear(w) {
   if (w.outside) { b.replaceChildren(el('kbd', '', 'E'), document.createTextNode(w.label)); b.hidden = false; return; }   // (on the street)
   if (w.meshes && w.id === 'door' && street()) { b.replaceChildren(el('kbd', '', 'E'), document.createTextNode(tr(lift ? 'fp.toStreet' : 'fp.outside'))); b.hidden = false; return; }
   if (w === cat) { b.replaceChildren(el('kbd', '', 'E'), document.createTextNode(tr('fp.petCat'))); b.hidden = false; return; }
-  if (w.meshes) { b.replaceChildren(el('kbd', '', 'E'), document.createTextNode(`${w.name}: ${propHint(w)}`)); b.hidden = false; return; }
+  if (w.meshes) { b.replaceChildren(el('kbd', '', 'E'), document.createTextNode(w.fpLabel || `${w.name}: ${propHint(w)}`)); b.hidden = false; return; }
   const name = w.sub ? tr('fp.subOf', { name: w.cfg.name, parent: sessions.get(w.parent?.id)?.name || tr('common.session') }) : sessions.get(w.id)?.name || w.cfg.name;
   b.replaceChildren(el('kbd', '', 'E'), document.createTextNode(tr(asleep ? 'fp.wake' : 'fp.watch', { name }))); b.hidden = false;
   if (!w.sub && !['type', 'console', 'read', 'sleep'].includes(w.anim)) w.waveUntil = state.sim + 1.6;

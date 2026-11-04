@@ -138,14 +138,27 @@ Chỉ ở kiểu văn phòng **Tập đoàn** (`hq`); các kiểu khác chỉ c�
 - **Thang máy** (`LIFT`, `liftPiece` trong `team-tower.js`): một trục ở cuối hành lang A, sát tường ngoài, thẳng hàng với
   thang ở sảnh (`world/entrance.js`) và cùng kiểu: ốp xám đậm, viền đồng, hai cánh cửa thép trong khung đồng mở ra hành
   lang, bảng số tầng trên cửa, nút gọi. Trục chạy liền từ mặt đất (đầu cụt của hành lang A, không ai đi qua) lên tới phòng
-  máy trên mái. Mặt hướng vào phòng có dải kính để thấy cabin chạy. Cabin tới tầng đang xem thì cửa tầng đó mở; ở toàn
-  nhà thì cabin về mặt đất. Bảng số trên mọi tầng cùng hiện chỗ cabin ("G" ở mặt đất, "▲ 3" khi đang lên). Thang ở sảnh
-  giữ hoạt cảnh riêng (người mới đi thang lên).
+  máy trên mái. Mặt hướng vào phòng có dải kính để thấy cabin chạy. Bảng số trên mọi tầng cùng hiện chỗ cabin ("G" ở
+  mặt đất, "▲ 3" khi đang lên). Thang ở sảnh giữ hoạt cảnh riêng (người mới đi thang lên).
+- **Cửa thang** (`updateLift`, `callLift`, `holdLift` trong `team-tower.js`), giống thang ở sảnh: cabin tới chỗ bạn xem
+  (một tầng; còn lại thì về mặt đất), chỉ chạy khi mọi cửa đã đóng. Tới tầng đang xem: "ding", cửa mở, 4 giây sau tự đóng.
+  Bấm vào cửa: cửa mở (kêu "ding" nếu đang đóng), nửa giây sau thẻ chọn tầng bật ra; cửa giữ mở khi thẻ còn hiện, đóng
+  thẻ thì 2,5 giây sau cửa đóng. Về "Của bạn" thì cabin về mặt đất ngay.
+- **Thang dưới đất** (`ensureGround`/`dropGround`): khi máy bạn ở trong team, ở cuối hành lang A của cánh luôn có tầng
+  thang dưới đất, cao 3 m có nắp như thang ở sảnh (ở toà nhà / xem tầng thì nắp ẩn, trục nối tiếp lên trên). Có cả ở
+  "Của bạn" và Hoá thân. Biển công ty ở cuối hành lang dời xuống vách thấp bên cạnh (`signBeside` trong
+  `world/pro/wing.js`), rời team thì thang biến mất và biển về chỗ cũ. Nó là một món đồ của tầng bạn (`PROPS`
+  `teamLift`): trỏ vào có viền và tên, bấm thì gọi cabin xuống (cửa mở, "ding") rồi bật thẻ chọn tầng ("Bạn đang ở tầng
+  G"). Trong Hoá thân nó chặn đường như tường (một hộp ẩn cho lưới va chạm; `liftHooks.grid` đo lại lưới khi thang
+  xuất hiện / biến mất), đi tới gần thì hiện "E Gọi thang lên toà nhà"; E hoặc bấm vào cửa thì gọi thang; chọn tầng thì
+  màn hình tối đi một chút (`rideOut` trong `interact/first-person.js`), bạn rời Hoá thân và camera tới tầng đó. Chưa
+  đi bộ trong các tầng của team được.
 - **Đi thang máy** (`openLiftCard` trong `ui/team-lift.js`): trỏ vào cửa thang ở tầng đang xem thì có viền sáng và tên
-  "Thang máy · Bấm để chọn tầng"; bấm thì một thẻ nhỏ bật ra cạnh đó: các tầng (tầng đang đứng tô sáng, chấm xanh là có
-  người online), **Toà nhà**, **Của bạn**. Chọn thì cửa đóng, cabin chạy, tới nơi kêu "ding" và cửa tầng mới mở (đổi
-  tầng bằng thang bên phải cũng vậy). Esc hoặc bấm chỗ khác thì đóng thẻ. Người đứng trước cửa thang thì bấm trúng người.
-  Trên màn hình hẹp thẻ bật ra dưới ngón tay, nên cú click đi kèm cú chạm (trong 0,4 giây đầu) không được tính là chọn.
+  "Thang máy · Bấm để chọn tầng"; bấm thì cửa mở và một thẻ nhỏ bật ra cạnh đó: các tầng (tầng đang đứng tô sáng, chấm
+  xanh là có người online), **Toà nhà**, **Của bạn**. Chọn thì cửa đóng, cabin chạy, tới nơi kêu "ding" và cửa tầng mới
+  mở (đổi tầng bằng thang bên phải cũng vậy). Esc hoặc bấm chỗ khác thì đóng thẻ. Người đứng trước cửa thang thì bấm trúng
+  người. Trên màn hình hẹp thẻ bật ra dưới ngón tay, nên cú click đi kèm cú chạm (trong 0,4 giây đầu) không được tính là
+  chọn.
 - **Ba kiểu tầng**, lần lượt từ tầng 1 (`themeOf` trong `src/shared/team-floors.js`, ai xem cũng thấy giống nhau):
   *Studio* (sofa, tủ thấp, ghế băng ở hành lang, sàn hành lang lát gạch), *Khu vườn* (ghế lười, bồn cây, tường rêu,
   nhiều cây, sàn gỗ sáng), *Thư viện* (ghế bành, đèn đọc sách, kệ sách thấp, bể cá ở hành lang, sàn gỗ tối).
