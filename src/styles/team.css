@@ -235,3 +235,44 @@
 .is-phone .team-mem { grid-template-columns: auto minmax(0, 1fr); }
 .is-phone .team-mem-acts { grid-column: 1 / -1; justify-content: flex-start; }
 .is-phone .team-mem-b { min-height: 34px; }
+
+/* the side columns on someone else's room (ui/team-side.js): their sessions on the left, their activity on the right */
+.side.is-team-side > :not(.team-side):not(.side-fold):not(.act-head) { display: none !important; }
+@media (min-width: 721px) { :root:not(.is-phone) .side.is-team-side > .act-head { display: none !important; } }
+.team-side { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.ts-head { padding: 14px 14px 8px; display: flex; flex-direction: column; gap: 10px; border-bottom: 1px solid var(--line); }
+.side-right .ts-head { padding-left: 50px; }
+.ts-back { all: unset; box-sizing: border-box; align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px 0 6px; border-radius: 8px; border: 1px solid var(--line-2); color: var(--muted); font-size: .78rem; font-weight: 600; cursor: pointer; }
+.ts-back svg.ic { transform: rotate(180deg); width: 14px; height: 14px; }
+.ts-back:hover { color: var(--ink); border-color: var(--accent); }
+.ts-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.side-left .ts-back { margin-right: 38px; }
+.ts-who { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ts-names { display: flex; flex-direction: column; min-width: 0; }
+.ts-names b { font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ts-names small { color: var(--muted); font-size: .74rem; }
+.ts-counts { margin: 10px 14px 4px; font-size: .78rem; color: var(--muted); }
+.ts-note { margin: 4px 14px; font-size: .8rem; color: var(--muted); }
+.team-side .team-knock, .team-side .team-access-note { margin: 8px 14px; }
+.ts-list { list-style: none; margin: 0; padding: 6px 8px 12px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.ts-empty { padding: 14px 8px; color: var(--faint); font-size: .8rem; }
+.ts-p { padding: 8px 10px; border-radius: 10px; display: flex; flex-direction: column; gap: 3px; }
+.ts-p:hover { background: var(--card); }
+.ts-p-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ts-p-top b { font-size: .86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ts-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--faint); }
+.ts-p.is-work .ts-dot { background: var(--green); }
+.ts-p.is-wait .ts-dot { background: var(--amber); }
+.ts-subs { margin-left: auto; font-size: .7rem; color: var(--muted); white-space: nowrap; }
+.ts-p-act { margin: 0 0 0 16px; display: flex; align-items: center; gap: 6px; font-size: .78rem; color: var(--muted); min-width: 0; }
+.ts-p-act svg.ic { width: 13px; height: 13px; }
+.ts-p.is-wait .ts-p-act { color: var(--amber); }
+.ts-p-role { margin-left: 16px; font-size: .72rem; color: var(--faint); }
+.ts-ev { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 7px 8px; border-radius: 9px; font-size: .8rem; }
+.ts-ev svg.ic { width: 14px; height: 14px; margin-top: 2px; color: var(--muted); }
+.ts-ev-t { display: flex; flex-direction: column; min-width: 0; }
+.ts-ev-t b { font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ts-ev-t span { color: var(--muted); overflow-wrap: anywhere; }
+.ts-ev time { color: var(--faint); font-size: .72rem; font-variant-numeric: tabular-nums; }
+.ts-ev.is-fail svg.ic, .ts-ev.is-testfail svg.ic { color: var(--red); }
+.ts-ev.is-testok svg.ic, .ts-ev.is-commit svg.ic { color: var(--green); }

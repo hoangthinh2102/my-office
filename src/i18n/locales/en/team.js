@@ -113,6 +113,7 @@ export default {
       bench: { name: 'Bench', hint: 'Give it a little bounce' },
     },
   },
+  side: { back: 'Yours', backTitle: 'Back to your own sessions and activity', sub: 'Floor {n} · view only', feed: 'Activity · {name}', none: 'No sessions running', empty: 'Nothing lately', closed: 'The room is closed: only how many are in.' },
   card: { room: "{name}'s room", readOnly: 'View only: this is someone else’s room.' },
   readOnly: 'View only: nobody can give work to another room.',
   // joining and inviting without the command line (src/office/ui/team-join.js)

@@ -113,6 +113,8 @@ export default {
     },
   },
   card: { room: 'Phòng của {name}', readOnly: 'Chỉ xem: đây là phòng của người khác.' },
+  // the side columns while you look at someone's room (ui/team-side.js)
+  side: { back: 'Của bạn', backTitle: 'Về phiên và hoạt động của bạn', sub: 'Tầng {n} · chỉ xem', feed: 'Hoạt động · {name}', none: 'Không có phiên nào đang chạy', empty: 'Chưa có hoạt động nào gần đây', closed: 'Phòng đang đóng: chỉ thấy số người.' },
   readOnly: 'Chỉ xem: không ai giao việc được cho phòng khác.',
   // vào team và mời người mà không cần gõ lệnh (src/office/ui/team-join.js)
   join: {

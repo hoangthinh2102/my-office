@@ -6,6 +6,7 @@ export default async function ActivityPanel() {
   const t = await getT();
   return (
     <aside className="side side-right" id="feed" aria-label={t('ui.activityPanel.title')}>
+      <button type="button" className="side-fold" id="fold-right" aria-expanded="true" aria-label={t('ui.activityPanel.fold')} title={t('ui.activityPanel.fold')}><span data-icon="chevron"></span></button>
       <button className="act-head" id="feed-toggle" type="button" aria-expanded="false"><span className="act-title">{t('ui.activityPanel.title')}</span><span className="live-tag" id="live-tag"><i></i><span>{t('ui.activityPanel.live')}</span></span></button>
       <div className="kpis" id="feed-stats" aria-label={t('ui.activityPanel.today')}></div>
       <button type="button" className="tl-open" id="tl-open"><span data-icon="timeline"></span><b>{t('ui.activityPanel.timeline')}</b><span className="tl-open-v" id="tl-open-v">{t('ui.activityPanel.timelineSub')}</span></button>
@@ -22,6 +23,7 @@ export default async function ActivityPanel() {
         <button type="button" data-k="agent" aria-pressed="false"><span data-icon="users"></span>{t('ui.activityPanel.agent')}</button>
       </div>
       <ul className="feed-list" id="feed-list"><li className="fi-empty">{t('ui.activityPanel.empty')}</li></ul>
+      <div className="team-side" id="team-feed" hidden></div>
     </aside>
   );
 }

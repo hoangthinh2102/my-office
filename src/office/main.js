@@ -76,6 +76,7 @@ import * as uiSessionDrawer from './ui/session-drawer.js';
 import * as uiCameraBar from './ui/camera-bar.js';
 import * as uiMacDrawer from './ui/mac-drawer.js';
 import * as uiTopbar from './ui/topbar.js';
+import * as uiSideFold from './ui/side-fold.js';
 import * as interactProps from './interact/props.js';
 import * as interactPlaceChips from './interact/place-chips.js';
 import * as interactPlaceCards from './interact/place-cards.js';
@@ -190,6 +191,7 @@ const MODULES = [
   uiCameraBar,
   uiMacDrawer,
   uiTopbar,
+  uiSideFold,
   interactProps,
   interactPlaceChips,
   interactPlaceCards,

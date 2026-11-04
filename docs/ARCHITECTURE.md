@@ -178,9 +178,11 @@ engine switches to demo mode and talks to no API.
 | `ui/team-members.js` | 85 | Team mode's members, in the building panel: who is in the team and who is an admin; admins make others admins and take members (never another admin) out, an admin steps down only themselves. |
 | `ui/skills.js` | 142 | Settings → Skills: this computer's skills and plugins; add one from a folder of yours (linked or copied), search a marketplace and install, remove with a second click (server/skills.mjs, /api/skills). |
 | `ui/team-lift.js` | 131 | Team mode's lift (headquarters plan only; markup: src/components/office/Stage.tsx #tw-lift, #tw-card): the buttons down the stage's right edge that choose what you look at in the building (world/team-tower.js): the whole building, a floor, or your own floor. |
+| `ui/team-side.js` | 91 | Team mode: the side columns while you look at someone else's room (its sessions on the left, its activity on the right, view only); "Yours" goes back. |
 | `ui/team.js` | 154 | Team mode's building (the building button in the top bar; markup: src/components/office/TeamModal.tsx): your own room, which you can open, close or pause from this computer, and everyone else's rooms floor by floor, view only. |
 | `ui/timelapse.js` | 156 | A 15-second clip of the office to share: square (1080 × 1080) for a feed or vertical (1080 × 1920) for Reels, TikTok and Shorts, the camera turning slowly round the floor, people at four times their pace, the day running into the evening (a clock in the corner from 8:00 to 23:00, the lights coming on at six), a title at the start and the day's numbers over the last two and a half seconds, with an original lo-fi tune under it (clip-music.js; it can be turned off). |
 | `ui/tips.js` | 115 | The first visit: a short tour of what you can click. |
+| `ui/side-fold.js` | 28 | Folds the side columns away to a narrow strip with one click on the arrow at their inner edge (wide screens; remembered). |
 | `ui/topbar.js` | 217 | Phone modal, notifications, the night switch. |
 | `ui/whiteboard.js` | 285 | The whiteboard: agents' tasks and your own sticky notes. |
 | `ui/wrapped.js` | 107 | The week in review: a 1080 × 1350 picture card (the office as it looks right now, then the week's numbers) to save as a PNG or copy, for sharing. |

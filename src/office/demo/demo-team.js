@@ -18,15 +18,20 @@ const PEOPLE = [
   ['Hà', 'open', [['Dev', 'docs-site', 'work', 'write']]],
   ['Tú', 'closed', [['Dev', 'infra', 'work', 'bash'], ['Dev', 'infra', 'wait', 'ask']]],
 ];
-const ACTS = ['read', 'edit', 'bash', 'grep', 'test', 'web', 'write', 'commit', 'push'];
+const ACTS = ['read', 'edit', 'bash', 'grep', 'test', 'web', 'write', 'commit', 'push', 'plan', 'glob', 'agent'];
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
+// a little of what each room's people did in the last half hour, oldest first, ending with what they do now
+const seedEvents = (people, t0) => people.flatMap((p, k) => [
+  { p: p.id, type: 'prompt', ts: t0 - (28 - k * 3) * 60e3 }, { p: p.id, type: 'read', ts: t0 - (21 - k * 2) * 60e3 },
+  { p: p.id, type: 'edit', ts: t0 - (12 - k) * 60e3 }, ...(p.act ? [{ p: p.id, type: p.act, ts: t0 - k * 60e3 }] : []),
+]).sort((a, b) => a.ts - b.ts);
 const counts = (people) => ({ work: people.filter((p) => p.status === 'work').length, wait: people.filter((p) => p.status === 'wait').length, rest: people.filter((p) => p.status === 'rest').length });
 
 export function startDemoTeam(t0 = Date.now()) {
   const rooms = PEOPLE.map(([name, mode, ppl], i) => {
     const people = ppl.map(([role, project, status, act], k) => ({ id: `demo${i}p${k}`, status, project, role, subs: k === 0 && i % 3 === 0 ? 2 : 0, act, since: t0 - (k + 1) * 7 * 60e3, at: t0 - k * 60e3 }));
     const sees = mode === 'open' || mode === 'shared';
-    return { member: { id: `demo-m${i}`, name }, online: mode !== 'offline', mode: mode === 'open' ? 'open' : 'closed', counts: counts(people), ...(sees ? { people, events: [] } : {}), ...(mode === 'shared' ? { access: { until: t0 + 42 * 60e3 } } : {}), at: t0 };
+    return { member: { id: `demo-m${i}`, name }, online: mode !== 'offline', mode: mode === 'open' ? 'open' : 'closed', counts: counts(people), ...(sees ? { people, events: seedEvents(people, t0) } : {}), ...(mode === 'shared' ? { access: { until: t0 + 42 * 60e3 } } : {}), at: t0 };
   });
   const byName = (n) => rooms.find((r) => r.member.name === n).member;
   const t = {
